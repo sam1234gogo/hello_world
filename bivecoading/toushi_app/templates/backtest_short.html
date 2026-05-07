@@ -1,0 +1,713 @@
+{% extends "base.html" %}
+{% block title %}短期トレード シミュレーション結果{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+
+  <!-- ヘッダー -->
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div class="d-flex align-items-center">
+      <i class="bi bi-lightning-charge fs-3 text-info me-3"></i>
+      <div>
+        <h4 class="mb-0 fw-bold">短期トレード シミュレーション結果</h4>
+        <small class="text-muted">2015〜2025年 全 {{ "{:,}".format(total_count) }} 件のバックテスト（100株/1単元ベース）</small>
+      </div>
+    </div>
+    <a href="{{ url_for('backtest') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>バックテスト一覧へ
+    </a>
+  </div>
+
+  <!-- サマリーカード -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+      <div class="card bg-dark border-info h-100 text-center p-3">
+        <div class="text-muted small mb-1">総取引数</div>
+        <div class="fs-4 fw-bold text-info">{{ "{:,}".format(total_count) }}</div>
+        <div class="text-muted" style="font-size:0.75rem">件</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card bg-dark border-success h-100 text-center p-3">
+        <div class="text-muted small mb-1">勝率</div>
+        <div class="fs-4 fw-bold text-success">{{ "%.1f"|format(total_wins / total_count * 100) }}%</div>
+        <div class="text-muted" style="font-size:0.75rem">{{ "{:,}".format(total_wins) }}勝 / {{ "{:,}".format(total_count - total_wins) }}敗</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card bg-dark border-warning h-100 text-center p-3">
+        <div class="text-muted small mb-1">累計損益</div>
+        <div class="fs-4 fw-bold text-success">+{{ "{:,.0f}".format(total_pnl / 10000) }}万</div>
+        <div class="text-muted" style="font-size:0.75rem">ROI {{ "+%.2f"|format(total_pnl / total_inv * 100) }}%</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card bg-dark border-secondary h-100 text-center p-3">
+        <div class="text-muted small mb-1">平均損益/件</div>
+        <div class="fs-4 fw-bold {% if total_pnl / total_count >= 0 %}text-success{% else %}text-danger{% endif %}">
+          {{ "+{:,.0f}".format(total_pnl / total_count) if total_pnl / total_count >= 0 else "{:,.0f}".format(total_pnl / total_count) }}円
+        </div>
+        <div class="text-muted" style="font-size:0.75rem">平均保有 {{ "%.0f"|format(avg_days) }}日</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card bg-dark border-danger h-100 text-center p-3">
+        <div class="text-muted small mb-1">ロスカット</div>
+        <div class="fs-4 fw-bold text-danger">{{ total_lc }}</div>
+        <div class="text-muted" style="font-size:0.75rem">{{ "%.1f"|format(total_lc / total_count * 100) }}%</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card bg-dark border-secondary h-100 text-center p-3">
+        <div class="text-muted small mb-1">投資額合計</div>
+        <div class="fs-5 fw-bold text-light">{{ "{:,.0f}".format(total_inv / 100000000) }}億</div>
+        <div class="text-muted" style="font-size:0.75rem">{{ "{:,.0f}".format((total_inv % 100000000) / 10000) }}万円</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 平均損益率・利確期間 クイックサマリー -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="card bg-dark border-info h-100">
+        <div class="card-header py-2 text-info"><i class="bi bi-percent me-2"></i>平均損益率</div>
+        <div class="card-body">
+          <div class="row text-center g-0">
+            <div class="col-6 border-end border-secondary py-2">
+              <div class="text-muted small">短期のみ</div>
+              <div class="fs-5 fw-bold text-success">+{{ "%.2f"|format(outcome_groups['短期利益確定'].avg_rate * outcome_groups['短期利益確定'].count / total_count
+                + outcome_groups['ロスカット'].avg_rate * outcome_groups['ロスカット'].count / total_count
+                + outcome_groups['中長期移行'].avg_rate * outcome_groups['中長期移行'].count / total_count
+                + (outcome_groups['保有中'].avg_rate * outcome_groups['保有中'].count / total_count if outcome_groups['保有中'] else 0)
+              ) }}%</div>
+              <div class="text-muted" style="font-size:0.75rem">全1,586件単純平均</div>
+            </div>
+            <div class="col-6 py-2">
+              <div class="text-muted small">移行組込み</div>
+              <div class="fs-5 fw-bold text-success">+{{ "%.2f"|format(combined_avg_rate) }}%</div>
+              <div class="text-muted" style="font-size:0.75rem">中長期最終結果で評価</div>
+            </div>
+          </div>
+          <hr class="border-secondary my-2">
+          <div class="row text-center g-0" style="font-size:0.80rem;">
+            <div class="col-3 py-1">
+              <div class="text-muted">短期利確</div>
+              <div class="text-success fw-semibold">+{{ "%.1f"|format(outcome_groups['短期利益確定'].avg_rate) }}%</div>
+            </div>
+            <div class="col-3 py-1">
+              <div class="text-muted">ロスカット</div>
+              <div class="text-danger fw-semibold">{{ "%.1f"|format(outcome_groups['ロスカット'].avg_rate) }}%</div>
+            </div>
+            <div class="col-3 py-1">
+              <div class="text-muted">中期移行後</div>
+              <div class="text-success fw-semibold">+{{ "%.1f"|format(trans_detail.get('中期',{}).get('avg_rate',0)) }}%</div>
+            </div>
+            <div class="col-3 py-1">
+              <div class="text-muted">長期移行後</div>
+              <div class="text-success fw-semibold">+{{ "%.1f"|format(trans_detail.get('長期',{}).get('avg_rate',0)) }}%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-8">
+      <div class="card bg-dark border-warning h-100">
+        <div class="card-header py-2 text-warning"><i class="bi bi-clock-history me-2"></i>平均利確期間</div>
+        <div class="card-body">
+          <!-- 4区分横並び -->
+          <div class="row text-center g-0 mb-2">
+            {%- set hdata = [
+              ('短期利確',   'success', holding['短期利確']),
+              ('ロスカット', 'danger',  holding['ロスカット']),
+              ('全件平均',   'light',   holding['全件']),
+            ] -%}
+            {% for label, color, h in hdata %}
+            {% if h %}
+            <div class="col-4 border-end border-secondary px-2">
+              <div class="text-{{ color }} small fw-semibold mb-1">{{ label }}</div>
+              <div class="fs-4 fw-bold text-{{ color }}">{{ "%.0f"|format(h.avg) }}<span class="fs-6 fw-normal text-muted">日</span></div>
+              <div class="text-muted" style="font-size:0.72rem;">最短{{ h.min }}日 / 最長{{ h.max }}日</div>
+            </div>
+            {% endif %}
+            {% endfor %}
+            <!-- 移行後 -->
+            <div class="col-4 px-2">
+              <div class="text-info small fw-semibold mb-1">移行後最終利確</div>
+              <div style="font-size:0.80rem;" class="mt-1">
+                {% if trans_detail.get('中期', {}).get('avg_days_profit') %}
+                <div class="d-flex justify-content-between px-2">
+                  <span class="badge bg-warning text-dark">中期</span>
+                  <span class="fw-bold text-warning">{{ "%.0f"|format(trans_detail['中期']['avg_days_profit']) }}日</span>
+                  <span class="text-muted small">利確{{ trans_detail['中期']['profit_count'] }}件</span>
+                </div>
+                {% endif %}
+                {% if trans_detail.get('長期', {}).get('avg_days_profit') %}
+                <div class="d-flex justify-content-between px-2 mt-1">
+                  <span class="badge bg-success text-dark">長期</span>
+                  <span class="fw-bold text-success">{{ "%.0f"|format(trans_detail['長期']['avg_days_profit']) }}日</span>
+                  <span class="text-muted small">利確{{ trans_detail['長期']['profit_count'] }}件</span>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <!-- 分布バー（短期利確のみ） -->
+          <div class="text-muted small mb-1">短期利確 保有期間分布</div>
+          {% if holding['短期利確'] %}
+          <div class="d-flex gap-1" style="height:28px;">
+            {%- set colors = ['#0dcaf0','#198754','#20c997','#ffc107','#fd7e14'] -%}
+            {%- set bar_colors = ['#0dcaf0','#198754','#20c997','#ffc107','#fd7e14'] -%}
+            {%- set ns = namespace(idx=0) -%}
+            {% for seg in holding['短期利確'].dist %}
+            {% if seg.pct > 0 %}
+            <div style="width:{{ seg.pct }}%; background:{{ bar_colors[ns.idx] }}; border-radius:3px;"
+                 title="{{ seg.label }}: {{ seg.count }}件 ({{ '%.1f'|format(seg.pct) }}%)"
+                 data-bs-toggle="tooltip"></div>
+            {% endif %}
+            {%- set ns.idx = ns.idx + 1 -%}
+            {% endfor %}
+          </div>
+          <div class="d-flex gap-2 mt-1" style="font-size:0.70rem;">
+            {%- set leg_colors = ['#0dcaf0','#198754','#20c997','#ffc107','#fd7e14'] -%}
+            {%- set ns2 = namespace(idx=0) -%}
+            {% for seg in holding['短期利確'].dist %}
+            <span>
+              <span style="display:inline-block;width:8px;height:8px;background:{{ leg_colors[ns2.idx] }};border-radius:2px;"></span>
+              {{ seg.label }} {{ "%.0f"|format(seg.pct) }}%
+            </span>
+            {%- set ns2.idx = ns2.idx + 1 -%}
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================
+       結果区分別分析（短期勝ち / LC / 中長期移行）
+       ====================================================== -->
+  <div class="card mb-4">
+    <div class="card-header py-2">
+      <i class="bi bi-funnel me-2 text-warning"></i>
+      結果区分別パフォーマンス
+      <span class="ms-3 text-muted small">短期で何が起き、移行後はどうなったか</span>
+    </div>
+    <div class="card-body p-0">
+
+      <!-- 横並び4区分カード -->
+      {%- set og = outcome_groups -%}
+      {%- set grp_order = [
+            ('短期利益確定', 'success',  'bi-check-circle',      '短期段階で利益確定した取引'),
+            ('ロスカット',   'danger',   'bi-x-circle',          '損切りで終了した取引'),
+            ('中長期移行',  'info',     'bi-arrow-right-circle', '短期目標未達で中長期へ移行した取引'),
+            ('保有中',      'secondary','bi-hourglass-split',    '現在も保有中（未確定）'),
+          ] -%}
+      <div class="row g-0 border-bottom border-secondary">
+        {% for key, color, icon, tip in grp_order %}
+        {%- set g = og[key] -%}
+        {% if g %}
+        <div class="col-6 col-md-3 border-end border-secondary p-3 text-center">
+          <div class="text-{{ color }} mb-1"><i class="bi {{ icon }} fs-5"></i></div>
+          <div class="fw-bold mb-1" style="font-size:0.85rem;">{{ key }}</div>
+          <div class="fs-5 fw-bold {% if g.pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {% if g.pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(g.pnl / 10000) }}万円
+          </div>
+          <div class="row text-muted mt-2 g-0" style="font-size:0.78rem;">
+            <div class="col-6 border-end border-secondary py-1">
+              <div class="text-white-50">件数</div>
+              <div class="fw-semibold text-white">{{ "{:,}".format(g.count) }}</div>
+            </div>
+            <div class="col-6 py-1">
+              <div class="text-white-50">割合</div>
+              <div class="fw-semibold text-white">{{ "%.1f"|format(g.ratio) }}%</div>
+            </div>
+            <div class="col-6 border-end border-secondary py-1">
+              <div class="text-white-50">平均損益率</div>
+              <div class="fw-semibold {% if g.avg_rate >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if g.avg_rate >= 0 %}+{% endif %}{{ "%.2f"|format(g.avg_rate) }}%
+              </div>
+            </div>
+            <div class="col-6 py-1">
+              <div class="text-white-50">投資ROI</div>
+              <div class="fw-semibold {% if g.roi >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if g.roi >= 0 %}+{% endif %}{{ "%.2f"|format(g.roi) }}%
+              </div>
+            </div>
+            <div class="col-12 py-1">
+              <div class="text-white-50">平均保有日</div>
+              <div class="fw-semibold text-white">{{ "%.0f"|format(g.avg_days) }}日</div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+
+      <!-- 移行後の中期・長期成績 -->
+      <div class="p-3">
+        <div class="text-muted small mb-2 fw-semibold">
+          <i class="bi bi-arrow-return-right me-1"></i>
+          中長期移行組（{{ og['中長期移行'].count }}件）の移行後成績
+        </div>
+        <div class="row g-3">
+          {% for st, color in [('中期','warning'),('長期','success')] %}
+          {%- set td = trans_detail.get(st, {}) -%}
+          {% if td %}
+          <div class="col-md-5">
+            <div class="card bg-dark border-{{ color }} h-100">
+              <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="badge bg-{{ color }} text-dark fw-bold">{{ st }}投資へ移行</span>
+                  <span class="text-muted small">{{ "{:,}".format(td.count) }}件追跡</span>
+                </div>
+                <div class="fs-5 fw-bold {% if td.pnl >= 0 %}text-success{% else %}text-danger{% endif %} mb-2">
+                  {% if td.pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(td.pnl / 10000) }}万円
+                </div>
+                <div class="row text-center g-0" style="font-size:0.80rem;">
+                  <div class="col-4 border-end border-secondary">
+                    <div class="text-muted">勝率</div>
+                    <div class="fw-semibold {% if td.win_rate >= 70 %}text-success{% elif td.win_rate >= 50 %}text-warning{% else %}text-danger{% endif %}">
+                      {{ "%.1f"|format(td.win_rate) }}%
+                    </div>
+                  </div>
+                  <div class="col-4 border-end border-secondary">
+                    <div class="text-muted">平均損益率</div>
+                    <div class="fw-semibold {% if td.avg_rate >= 0 %}text-success{% else %}text-danger{% endif %}">
+                      {% if td.avg_rate >= 0 %}+{% endif %}{{ "%.2f"|format(td.avg_rate) }}%
+                    </div>
+                  </div>
+                  <div class="col-4">
+                    <div class="text-muted">ROI</div>
+                    <div class="fw-semibold {% if td.roi >= 0 %}text-success{% else %}text-danger{% endif %}">
+                      {% if td.roi >= 0 %}+{% endif %}{{ "%.2f"|format(td.roi) }}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          {% endfor %}
+
+          <!-- 全区分合算 -->
+          <div class="col-md-2 d-flex align-items-center justify-content-center text-center">
+            <div>
+              <div class="text-muted small mb-1">全区分合算</div>
+              <div class="fs-5 fw-bold text-success">
+                +{{ "{:,.0f}".format(combined_pnl / 10000) }}万円
+              </div>
+              <div class="text-muted small">総合ROI</div>
+              <div class="fw-bold {% if combined_roi >= 0 %}text-success{% else %}text-danger{% endif %} fs-6">
+                {% if combined_roi >= 0 %}+{% endif %}{{ "%.2f"|format(combined_roi) }}%
+              </div>
+              <div class="text-muted mt-1" style="font-size:0.72rem;">
+                ※移行組は中長期<br>結果で評価
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- フロー図サマリー（テキスト） -->
+        <div class="mt-3 p-3 rounded" style="background:#1a1a2e; font-size:0.82rem; line-height:2;">
+          <span class="text-info fw-bold">短期スクリーニング {{ "{:,}".format(total_count) }}件</span>
+          <span class="text-muted mx-2">→</span>
+          <span class="text-success">利益確定 {{ "{:,.0f}".format(og['短期利益確定'].count) }}件 ({{ "%.1f"|format(og['短期利益確定'].ratio) }}%) 平均{{ "+%.2f"|format(og['短期利益確定'].avg_rate) }}%</span>
+          <span class="text-muted mx-2">｜</span>
+          <span class="text-danger">ロスカット {{ og['ロスカット'].count }}件 ({{ "%.1f"|format(og['ロスカット'].ratio) }}%) 平均{{ "%.2f"|format(og['ロスカット'].avg_rate) }}%</span>
+          <span class="text-muted mx-2">｜</span>
+          <span class="text-info">中長期移行 {{ og['中長期移行'].count }}件 ({{ "%.1f"|format(og['中長期移行'].ratio) }}%)
+            <span class="text-muted">→</span>
+            中期 {{ "%.1f"|format(trans_detail.get('中期',{}).get('win_rate',0)) }}%勝率
+            <span class="text-muted">/</span>
+            長期 {{ "%.1f"|format(trans_detail.get('長期',{}).get('win_rate',0)) }}%勝率
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- チャート行 -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-8">
+      <div class="card h-100">
+        <div class="card-header py-2"><i class="bi bi-bar-chart me-2 text-warning"></i>年別損益・累積推移</div>
+        <div class="card-body p-2"><div id="chart-yearly" style="height:240px;"></div></div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header py-2"><i class="bi bi-pie-chart me-2 text-warning"></i>アウトカム内訳</div>
+        <div class="card-body p-2"><div id="chart-outcome" style="height:240px;"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- カテゴリ別 / ナンピン別 -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header py-2"><i class="bi bi-tag me-2 text-warning"></i>カテゴリ別成績</div>
+        <div class="card-body p-0">
+          <table class="table table-sm table-hover mb-0 text-center align-middle" style="font-size:0.84rem;">
+            <thead class="table-dark">
+              <tr>
+                <th class="text-start ps-3">カテゴリ</th>
+                <th>件数</th>
+                <th>勝率</th>
+                <th>損益合計</th>
+                <th>平均損益</th>
+                <th>ROI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in categories %}
+              <tr>
+                <td class="text-start ps-3"><span class="badge bg-{{ c.color }} text-dark">{{ c.name }}</span></td>
+                <td>{{ c.count }}</td>
+                <td class="{% if c.win_rate >= 75 %}text-success fw-bold{% elif c.win_rate >= 60 %}text-warning{% else %}text-danger{% endif %}">{{ "%.1f"|format(c.win_rate) }}%</td>
+                <td class="fw-semibold {% if c.pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                  {% if c.pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(c.pnl / 10000) }}万
+                </td>
+                <td class="{% if c.avg_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                  {% if c.avg_pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(c.avg_pnl) }}円
+                </td>
+                <td class="{% if c.roi >= 0 %}text-success{% else %}text-danger{% endif %}">
+                  {% if c.roi >= 0 %}+{% endif %}{{ "%.2f"|format(c.roi) }}%
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header py-2"><i class="bi bi-arrow-down-circle me-2 text-warning"></i>ナンピン回数別成績</div>
+        <div class="card-body p-0">
+          <table class="table table-sm table-hover mb-0 text-center align-middle" style="font-size:0.84rem;">
+            <thead class="table-dark">
+              <tr>
+                <th>ナンピン</th>
+                <th>件数</th>
+                <th>勝率</th>
+                <th>損益合計</th>
+                <th>平均損益</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for n in nanpin_stats %}
+              <tr>
+                <td>
+                  {% if n.count_n == 0 %}
+                    <span class="badge bg-secondary">なし</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">{{ n.count_n }}回</span>
+                  {% endif %}
+                </td>
+                <td>{{ n.count }}</td>
+                <td class="{% if n.win_rate >= 75 %}text-success fw-bold{% elif n.win_rate >= 50 %}text-warning{% else %}text-danger fw-bold{% endif %}">{{ "%.1f"|format(n.win_rate) }}%</td>
+                <td class="fw-semibold {% if n.pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                  {% if n.pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(n.pnl / 10000) }}万
+                </td>
+                <td class="{% if n.avg_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                  {% if n.avg_pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(n.avg_pnl) }}円
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="px-3 pb-2 pt-1 text-muted" style="font-size:0.75rem;">
+            ※ナンピン3回は勝率21.5%・-614万円。ナンピン0回は81.9%・+1,022万円。深追いは禁物。
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 保有期間別 年利分析 -->
+  <div class="card mb-4">
+    <div class="card-header py-2">
+      <i class="bi bi-speedometer2 me-2 text-warning"></i>保有期間別 年利分析
+      <span class="ms-2 text-muted small">利確後すぐに再投資した場合の年間リターン</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover table-bordered mb-0 text-center align-middle" style="font-size:0.82rem;">
+          <thead>
+            <tr class="table-dark">
+              <th rowspan="2" class="align-middle">保有期間</th>
+              <th colspan="4" class="border-start border-secondary text-success">利確のみ（理想）</th>
+              <th colspan="5" class="border-start border-secondary text-warning">利確＋ロスカット込み（現実）</th>
+            </tr>
+            <tr class="table-dark" style="font-size:0.75rem;">
+              <th class="border-start border-secondary">件数</th>
+              <th>平均日数</th>
+              <th>平均利率</th>
+              <th>年利（複利）</th>
+              <th class="border-start border-secondary">件数</th>
+              <th>LC率</th>
+              <th>平均利率</th>
+              <th>単利年換算</th>
+              <th>年利（複利）</th>
+            </tr>
+          </thead>
+          <tbody>
+            {%- set max_p_compound = period_stats | map(attribute='p_compound') | max -%}
+            {%- set max_d_simple   = period_stats | map(attribute='d_simple')   | max -%}
+            {% for s in period_stats %}
+            <tr>
+              <td class="fw-semibold">{{ s.label }}</td>
+              <!-- 利確のみ -->
+              <td class="text-muted border-start border-secondary">{{ s.p_count }}件</td>
+              <td class="text-muted">{{ "%.1f"|format(s.p_avg_days) }}日</td>
+              <td class="text-success">{{ "+%.2f"|format(s.p_avg_rate) }}%</td>
+              <td class="fw-bold {% if s.p_compound == max_p_compound %}text-warning bg-warning bg-opacity-10{% else %}text-success{% endif %}">
+                {{ "+%.0f"|format(s.p_compound) }}%
+                {% if s.p_compound == max_p_compound %}<i class="bi bi-star-fill ms-1" style="font-size:0.7rem;"></i>{% endif %}
+              </td>
+              <!-- 利確+LC -->
+              <td class="text-muted border-start border-secondary">{{ s.d_count }}件</td>
+              <td class="{% if s.lc_rate > 10 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+                {{ "%.1f"|format(s.lc_rate) }}%
+              </td>
+              <td class="{% if s.d_avg_rate >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if s.d_avg_rate >= 0 %}+{% endif %}{{ "%.2f"|format(s.d_avg_rate) }}%
+              </td>
+              <td class="{% if s.d_simple == max_d_simple %}text-warning fw-bold{% else %}text-success{% endif %}">
+                {{ "+%.0f"|format(s.d_simple) }}%
+                {% if s.d_simple == max_d_simple %}<i class="bi bi-star-fill ms-1" style="font-size:0.7rem;"></i>{% endif %}
+              </td>
+              <td class="{% if s.d_compound >= 100 %}text-success fw-semibold{% elif s.d_compound >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if s.d_compound >= 0 %}+{% endif %}{{ "%.0f"|format(s.d_compound) }}%
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="px-3 py-2 d-flex gap-4 text-muted" style="font-size:0.75rem;">
+        <span><i class="bi bi-star-fill text-warning me-1"></i>最大値</span>
+        <span>単利年換算 = 平均利率 ÷ 平均日数 × 365</span>
+        <span>複利年換算 = (1 + 利率)^(365÷日数) − 1</span>
+        <span class="text-danger">LC率 10%超は赤字表示</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 年度別詳細テーブル -->
+  <div class="card mb-4">
+    <div class="card-header py-2"><i class="bi bi-calendar3 me-2 text-warning"></i>年度別詳細</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover table-bordered mb-0 text-center align-middle" style="font-size:0.82rem;">
+          <thead class="table-dark">
+            <tr>
+              <th>年</th><th>件数</th><th>勝率</th>
+              <th>投資額</th><th>損益合計</th><th>ROI</th>
+              <th>利確</th><th>LC</th><th>移行</th><th>平均保有日</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for y in yearly %}
+            <tr {% if y.pnl < 0 %}class="table-danger bg-opacity-10"{% endif %}>
+              <td class="fw-bold">{{ y.year }}</td>
+              <td>{{ y.count }}</td>
+              <td class="{% if y.win_rate >= 80 %}text-success fw-bold{% elif y.win_rate >= 65 %}text-warning{% else %}text-danger{% endif %}">
+                {{ "%.1f"|format(y.win_rate) }}%
+              </td>
+              <td class="text-muted">{{ "{:,.0f}".format(y.investment / 10000) }}万</td>
+              <td class="fw-semibold {% if y.pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if y.pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(y.pnl / 10000) }}万
+              </td>
+              <td class="{% if y.roi >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if y.roi >= 0 %}+{% endif %}{{ "%.1f"|format(y.roi) }}%
+              </td>
+              <td>{{ y.profit_cnt }}</td>
+              <td class="{% if y.lc > 0 %}text-warning{% else %}text-muted{% endif %}">{{ y.lc }}</td>
+              <td class="text-muted">{{ y.transfer }}</td>
+              <td class="text-muted">{{ "%.0f"|format(y.avg_days) }}日</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="table-dark fw-bold">
+            <tr>
+              <td>合計</td>
+              <td>{{ "{:,}".format(total_count) }}</td>
+              <td>{{ "%.1f"|format(total_wins / total_count * 100) }}%</td>
+              <td>{{ "{:,.0f}".format(total_inv / 10000) }}万</td>
+              <td class="text-success">+{{ "{:,.0f}".format(total_pnl / 10000) }}万</td>
+              <td class="text-success">+{{ "%.1f"|format(total_pnl / total_inv * 100) }}%</td>
+              <td colspan="4"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全トレード一覧 -->
+  <div class="card">
+    <div class="card-header py-2 d-flex align-items-center justify-content-between">
+      <span><i class="bi bi-list-ul me-2 text-warning"></i>全トレード一覧</span>
+      <div class="d-flex gap-2">
+        <select id="filter-year" class="form-select form-select-sm" style="width:90px;">
+          <option value="">全年</option>
+          {% for y in yearly %}
+          <option value="{{ y.year }}">{{ y.year }}</option>
+          {% endfor %}
+        </select>
+        <select id="filter-outcome" class="form-select form-select-sm" style="width:130px;">
+          <option value="">全アウトカム</option>
+          <option value="利益確定">利益確定</option>
+          <option value="ロスカット">ロスカット</option>
+          <option value="中期/長期へ移行">中期/長期移行</option>
+          <option value="保有中">保有中</option>
+        </select>
+        <input id="filter-ticker" type="text" class="form-control form-control-sm" placeholder="銘柄コード/名" style="width:130px;">
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive" style="max-height:480px; overflow-y:auto;">
+        <table class="table table-sm table-hover mb-0 text-center align-middle" style="font-size:0.80rem;" id="trades-table">
+          <thead class="table-dark sticky-top">
+            <tr>
+              <th>スクリーニング日</th>
+              <th>コード</th>
+              <th>銘柄名</th>
+              <th>カテゴリ</th>
+              <th>スコア</th>
+              <th>取得価格</th>
+              <th>売却価格</th>
+              <th>損益</th>
+              <th>損益率</th>
+              <th>保有日</th>
+              <th>ナンピン</th>
+              <th>アウトカム</th>
+            </tr>
+          </thead>
+          <tbody id="trades-body">
+            {% for t in trades %}
+            <tr data-year="{{ t.year }}"
+                data-outcome="{{ t.outcome }}"
+                data-ticker="{{ t.ticker }} {{ t.stock_name }}">
+              <td class="text-muted">{{ t.screen_date }}</td>
+              <td class="fw-semibold">{{ t.ticker }}</td>
+              <td class="text-start" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ t.stock_name }}</td>
+              <td>
+                {% if t.category == '安心割安株' %}<span class="badge bg-success text-dark">安心</span>
+                {% elif t.category == '通常割安株' %}<span class="badge bg-warning text-dark">通常</span>
+                {% else %}<span class="badge bg-info text-dark">成長</span>{% endif %}
+              </td>
+              <td>{{ t.score }}</td>
+              <td>{{ "{:,.0f}".format(t.purchase_price) }}</td>
+              <td>{{ "{:,.0f}".format(t.sell_price) if t.sell_price else '-' }}</td>
+              <td class="fw-semibold {% if t.pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if t.pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(t.pnl) }}
+              </td>
+              <td class="{% if t.pnl_rate >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if t.pnl_rate >= 0 %}+{% endif %}{{ "%.1f"|format(t.pnl_rate) }}%
+              </td>
+              <td class="text-muted">{{ t.days_held }}日</td>
+              <td>{% if t.nanpin_count > 0 %}<span class="badge bg-warning text-dark">{{ t.nanpin_count }}回</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
+              <td>
+                {% if t.outcome == '利益確定' %}<span class="badge bg-success text-dark">利確</span>
+                {% elif 'ロスカット' in t.outcome %}<span class="badge bg-danger">LC</span>
+                {% elif '移行' in t.outcome %}<span class="badge bg-info text-dark">移行</span>
+                {% else %}<span class="badge bg-secondary">保有中</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="px-3 py-2 text-muted small" id="table-count"></div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ---- チャート: 年別損益バー + 累積ライン ----
+(function() {
+  const years  = {{ chart_years | tojson }};
+  const pnl    = {{ chart_pnl   | tojson }};
+  const cumul  = {{ chart_cumul | tojson }};
+  const wr     = {{ chart_win_rates | tojson }};
+
+  const bar = {
+    x: years, y: pnl, type: 'bar', name: '年別損益',
+    marker: { color: pnl.map(v => v >= 0 ? '#198754' : '#dc3545') },
+    hovertemplate: '%{x}年: <b>%{y:,.0f}万円</b><extra></extra>',
+  };
+  const line = {
+    x: years, y: cumul, type: 'scatter', mode: 'lines+markers',
+    name: '累積損益', yaxis: 'y', line: { color: '#ffc107', width: 2 },
+    marker: { size: 5 },
+    hovertemplate: '%{x}年 累積: <b>%{y:,.0f}万円</b><extra></extra>',
+  };
+  Plotly.newPlot('chart-yearly', [bar, line], {
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#ccc', size: 11 },
+    margin: { t: 10, b: 40, l: 60, r: 20 },
+    xaxis: { gridcolor: '#333', tickangle: -30 },
+    yaxis: { gridcolor: '#333', ticksuffix: '万' },
+    legend: { orientation: 'h', y: -0.3, x: 0.5, xanchor: 'center' },
+    barmode: 'group',
+    hovermode: 'x unified',
+  }, { responsive: true, displayModeBar: false });
+})();
+
+// ---- チャート: アウトカム円グラフ ----
+(function() {
+  const outcomes = {{ outcome_counts | tojson }};
+  const labels = Object.keys(outcomes);
+  const values = Object.values(outcomes);
+  const colors = { '利益確定': '#198754', 'ロスカット': '#dc3545', '中期/長期へ移行': '#0dcaf0', '保有中（未確定）': '#6c757d' };
+  Plotly.newPlot('chart-outcome', [{
+    type: 'pie', labels: labels, values: values,
+    marker: { colors: labels.map(l => colors[l] || '#999') },
+    textinfo: 'label+percent', hole: 0.4,
+    hovertemplate: '%{label}: <b>%{value}件</b> (%{percent})<extra></extra>',
+  }], {
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#ccc', size: 11 },
+    margin: { t: 10, b: 10, l: 10, r: 10 },
+    showlegend: false,
+  }, { responsive: true, displayModeBar: false });
+})();
+
+// ---- テーブルフィルタ ----
+(function() {
+  const tbody = document.getElementById('trades-body');
+  const counter = document.getElementById('table-count');
+  const allRows = Array.from(tbody.querySelectorAll('tr'));
+
+  function update() {
+    const yr  = document.getElementById('filter-year').value;
+    const out = document.getElementById('filter-outcome').value;
+    const tk  = document.getElementById('filter-ticker').value.trim().toLowerCase();
+
+    let shown = 0;
+    allRows.forEach(row => {
+      const matchYr  = !yr  || row.dataset.year === yr;
+      const matchOut = !out || row.dataset.outcome.includes(out);
+      const matchTk  = !tk  || row.dataset.ticker.toLowerCase().includes(tk);
+      const visible  = matchYr && matchOut && matchTk;
+      row.style.display = visible ? '' : 'none';
+      if (visible) shown++;
+    });
+    counter.textContent = `表示中: ${shown.toLocaleString()} 件 / 全 ${allRows.length.toLocaleString()} 件`;
+  }
+
+  document.getElementById('filter-year').addEventListener('change', update);
+  document.getElementById('filter-outcome').addEventListener('change', update);
+  document.getElementById('filter-ticker').addEventListener('input', update);
+  update();
+})();
+</script>
+{% endblock %}

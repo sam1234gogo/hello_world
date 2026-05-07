@@ -1,0 +1,571 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード - 株式投資アシスタント{% endblock %}
+
+{% block content %}
+<div class="dashboard-page">
+    <!-- ページヘッダー -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">
+                <i class="bi bi-speedometer2 me-2 text-info"></i>スクリーニング結果
+            </h2>
+            {% if screened_at %}
+                <small class="text-muted">
+                    <i class="bi bi-clock me-1"></i>最終更新: {{ screened_at }}
+                    （対象: {{ total_screened }}銘柄）
+                </small>
+            {% endif %}
+        </div>
+        <button id="btn-refresh-main" class="btn btn-info btn-sm" onclick="refreshData()">
+            <i class="bi bi-arrow-clockwise me-1"></i>データ更新
+        </button>
+    </div>
+
+    <!-- エラーメッセージ -->
+    {% if error %}
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            データ取得エラー: {{ error }}
+            <br>
+            <small>ネットワーク接続を確認するか、「データ更新」ボタンを押してください。</small>
+        </div>
+    {% endif %}
+
+    <!-- ========================================================
+         セクション1: ★★★ 短期 安心割安株（最優先推奨）
+         ======================================================== -->
+    <section class="mb-5" id="section-anshin">
+        <div class="section-header-anshin d-flex align-items-center mb-3 p-3 rounded">
+            <div>
+                <h3 class="mb-0 text-warning fw-bold">
+                    <i class="bi bi-star-fill me-2 text-warning"></i>
+                    <i class="bi bi-star-fill me-1 text-warning"></i>
+                    <i class="bi bi-star-fill me-2 text-warning"></i>
+                    短期 安心割安株
+                    <span class="badge bg-warning text-dark ms-2">最優先推奨</span>
+                </h3>
+                <small class="text-muted">
+                    PBR≤0.75 または 配当利回り≥2.4% の高確率割安銘柄
+                </small>
+            </div>
+            <span class="ms-auto badge bg-warning text-dark fs-5">
+                {{ anshin_stocks|length }}銘柄
+            </span>
+        </div>
+
+        {% if anshin_stocks %}
+            <div class="table-responsive">
+                <table class="table table-dark table-hover anshin-table border border-warning">
+                    <thead class="table-warning text-dark">
+                        <tr>
+                            <th>銘柄</th>
+                            <th class="text-center">企業種別</th>
+                            <th class="text-end">現在価格</th>
+                            <th class="text-center">スコア</th>
+                            <th>スコア詳細</th>
+                            <th class="text-end">売り目標</th>
+                            <th class="text-end">ロスカット</th>
+                            <th>ナンピン水準</th>
+                            <th class="text-center">EPS改訂</th>
+                            <th class="text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in anshin_stocks %}
+                        <tr class="anshin-row">
+                            <td>
+                                <div class="fw-bold text-warning">
+                                    <i class="bi bi-star-fill text-warning me-1"></i>
+                                    {{ s.stock_name }}
+                                </div>
+                                <small class="text-muted">{{ s.ticker }}</small>
+                                <span class="badge bg-warning text-dark ms-1">安心割安株</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge {% if s.market_type == 'international' %}bg-primary{% else %}bg-purple{% endif %}">
+                                    {{ s.market_type_label if s.market_type_label else ('国際優良企業' if s.market_type == 'international' else '財務優良企業') }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <div class="fw-bold fs-5">
+                                    {% if s.current_price %}
+                                        ¥{{ '{:,.0f}'.format(s.current_price) }}
+                                    {% else %}
+                                        <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </div>
+                                {% if s.week52_low %}
+                                    <small class="text-muted">52週安値: ¥{{ '{:,.0f}'.format(s.week52_low) }}</small>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge fs-5 score-badge {% if s.score >= 6 %}bg-success{% elif s.score >= 3 %}bg-warning text-dark{% elif s.score >= 0 %}bg-info{% else %}bg-danger{% endif %}">
+                                    {{ '%+d' % s.score }}点
+                                </span>
+                            </td>
+                            <td>
+                                {% if s.score_details %}
+                                    <div class="score-details-small">
+                                        {% for key, detail in s.score_details.items() %}
+                                            <span class="badge me-1 mb-1
+                                                {% if detail.score > 0 %}bg-success
+                                                {% elif detail.score < 0 %}bg-danger
+                                                {% else %}bg-secondary{% endif %}">
+                                                {{ detail.label }}
+                                                ({{ '%+d' % detail.score }})
+                                            </span>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if s.sell_targets %}
+                                    <div class="text-success fw-bold">
+                                        ¥{{ '{:,.0f}'.format(s.sell_targets.profit_target) }}
+                                    </div>
+                                    <small class="text-muted">+{{ s.sell_targets.target_rate }}%</small>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if s.sell_targets %}
+                                    <div class="text-danger fw-bold">
+                                        ¥{{ '{:,.0f}'.format(s.sell_targets.loss_cut) }}
+                                    </div>
+                                    <small class="text-muted">-25%</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if s.nanpin_targets %}
+                                    {% for np in s.nanpin_targets %}
+                                        <div class="nanpin-level mb-1">
+                                            <span class="badge bg-warning text-dark">
+                                                {{ np.label }}: ¥{{ '{:,.0f}'.format(np.price) }}
+                                                (×{{ np.multiplier }})
+                                            </span>
+                                        </div>
+                                    {% endfor %}
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if s.has_eps_signal %}
+                                    <span class="badge bg-success blink-badge">
+                                        <i class="bi bi-arrow-up-circle-fill me-1"></i>
+                                        +{{ s.eps_revision }}%
+                                    </span>
+                                {% elif s.eps_revision %}
+                                    <span class="badge bg-secondary">{{ '%+.1f' % s.eps_revision }}%</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-warning btn-sm"
+                                        onclick="openAddPortfolioModal('{{ s.ticker }}', '{{ s.stock_name }}', '安心割安株', '{{ s.current_price or '' }}')">
+                                    <i class="bi bi-plus-circle"></i>追加
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-secondary">
+                <i class="bi bi-info-circle me-2"></i>
+                現在、安心割安株の条件を満たす銘柄はありません。
+                「データ更新」ボタンで最新データを取得してください。
+            </div>
+        {% endif %}
+    </section>
+
+    <!-- ========================================================
+         セクション2: 短期 通常割安株・成長株
+         ======================================================== -->
+    <section class="mb-5" id="section-normal">
+        <div class="d-flex align-items-center mb-3 p-3 rounded bg-dark border border-info">
+            <div>
+                <h3 class="mb-0 text-info fw-bold">
+                    <i class="bi bi-graph-up me-2 text-info"></i>
+                    短期 通常割安株・成長株
+                </h3>
+                <small class="text-muted">スコア+2点以上（経常利益増益）の割安銘柄</small>
+            </div>
+            <span class="ms-auto badge bg-info text-dark fs-6">{{ normal_stocks|length }}銘柄</span>
+        </div>
+
+        {% if normal_stocks %}
+            <div class="table-responsive">
+                <table class="table table-dark table-hover table-sm border border-info">
+                    <thead class="table-info text-dark">
+                        <tr>
+                            <th>銘柄</th>
+                            <th class="text-center">企業種別</th>
+                            <th class="text-end">現在価格</th>
+                            <th class="text-center">スコア</th>
+                            <th>スコア詳細</th>
+                            <th class="text-end">売り目標</th>
+                            <th>ナンピン水準</th>
+                            <th class="text-center">区分</th>
+                            <th class="text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in normal_stocks %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ s.stock_name }}</div>
+                                <small class="text-muted">{{ s.ticker }}</small>
+                                <span class="badge {% if s.category == '成長株' %}bg-success{% else %}bg-info text-dark{% endif %} ms-1">
+                                    {{ s.category }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge {% if s.market_type == 'international' %}bg-primary{% else %}bg-purple{% endif %}">
+                                    {{ s.market_type_label if s.market_type_label else ('国際優良企業' if s.market_type == 'international' else '財務優良企業') }}
+                                </span>
+                            </td>
+                            <td class="text-end fw-bold">
+                                {% if s.current_price %}
+                                    ¥{{ '{:,.0f}'.format(s.current_price) }}
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge {% if s.score >= 4 %}bg-success{% elif s.score >= 2 %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+                                    {{ '%+d' % s.score }}点
+                                </span>
+                            </td>
+                            <td>
+                                {% if s.score_details %}
+                                    <div class="score-details-small">
+                                        {% for key, detail in s.score_details.items() %}
+                                            <span class="badge me-1
+                                                {% if detail.score > 0 %}bg-success
+                                                {% elif detail.score < 0 %}bg-danger
+                                                {% else %}bg-secondary{% endif %}">
+                                                {{ detail.label }}
+                                            </span>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if s.sell_targets %}
+                                    <div class="text-success">
+                                        ¥{{ '{:,.0f}'.format(s.sell_targets.profit_target) }}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if s.nanpin_targets %}
+                                    {% for np in s.nanpin_targets %}
+                                        <small class="badge bg-warning text-dark me-1">
+                                            {{ np.label }}: ¥{{ '{:,.0f}'.format(np.price) }}
+                                        </small>
+                                    {% endfor %}
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge {% if s.category == '成長株' %}bg-success{% else %}bg-info text-dark{% endif %}">
+                                    {{ s.category }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-info btn-sm"
+                                        onclick="openAddPortfolioModal('{{ s.ticker }}', '{{ s.stock_name }}', '{{ s.category }}', '{{ s.current_price or '' }}')">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-secondary">
+                <i class="bi bi-info-circle me-2"></i>現在、条件を満たす短期候補はありません。
+            </div>
+        {% endif %}
+    </section>
+
+    <!-- ========================================================
+         セクション3: 中期投資候補
+         ======================================================== -->
+    <section class="mb-5" id="section-medium">
+        <div class="d-flex align-items-center mb-3 p-3 rounded bg-dark border border-success">
+            <div>
+                <h3 class="mb-0 text-success fw-bold">
+                    <i class="bi bi-calendar-range me-2 text-success"></i>
+                    中期投資候補
+                </h3>
+                <small class="text-muted">個別PBR ≤ 日経平均PBR × 係数の銘柄</small>
+            </div>
+            <span class="ms-auto badge bg-success fs-6">{{ medium_stocks|length }}銘柄</span>
+        </div>
+
+        {% if medium_stocks %}
+            <div class="table-responsive">
+                <table class="table table-dark table-hover table-sm border border-success">
+                    <thead class="table-success text-dark">
+                        <tr>
+                            <th>銘柄</th>
+                            <th class="text-end">現在価格</th>
+                            <th class="text-center">現在PBR</th>
+                            <th class="text-center">閾値PBR</th>
+                            <th class="text-center">企業種別</th>
+                            <th class="text-center">ROE</th>
+                            <th class="text-center">配当利回り</th>
+                            <th class="text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in medium_stocks %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ s.stock_name }}</div>
+                                <small class="text-muted">{{ s.ticker }}</small>
+                            </td>
+                            <td class="text-end fw-bold">
+                                {% if s.current_price %}
+                                    ¥{{ '{:,.0f}'.format(s.current_price) }}
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if s.pbr %}
+                                    <span class="badge bg-success">{{ '%.2f' % s.pbr }}倍</span>
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if s.threshold_pbr %}
+                                    <span class="badge bg-warning text-dark">{{ '%.2f' % s.threshold_pbr }}倍</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge {% if s.market_type == 'international' %}bg-primary{% else %}bg-purple{% endif %}">
+                                    {% if s.market_type == 'international' %}国際優良{% else %}財務優良{% endif %}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                {% if s.roe %}{{ '%.1f' % s.roe }}%{% else %}<span class="text-muted">N/A</span>{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if s.dividend_yield %}{{ '%.2f' % s.dividend_yield }}%{% else %}<span class="text-muted">N/A</span>{% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-success btn-sm"
+                                        onclick="openAddPortfolioModal('{{ s.ticker }}', '{{ s.stock_name }}', '中期', '{{ s.current_price or '' }}', 'medium')">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-secondary">
+                <i class="bi bi-info-circle me-2"></i>現在、条件を満たす中期候補はありません。
+            </div>
+        {% endif %}
+    </section>
+
+    <!-- ========================================================
+         セクション4: 長期投資候補
+         ======================================================== -->
+    <section class="mb-5" id="section-long">
+        <div class="d-flex align-items-center mb-3 p-3 rounded bg-dark border border-purple">
+            <div>
+                <h3 class="mb-0 text-purple fw-bold">
+                    <i class="bi bi-calendar2-heart me-2"></i>
+                    長期投資候補
+                </h3>
+                <small class="text-muted">配当利回り3〜5%目標の長期保有銘柄</small>
+            </div>
+            <span class="ms-auto badge bg-purple fs-6">{{ long_stocks|length }}銘柄</span>
+        </div>
+
+        {% if long_stocks %}
+            <div class="table-responsive">
+                <table class="table table-dark table-hover table-sm border border-purple">
+                    <thead class="bg-purple">
+                        <tr>
+                            <th>銘柄</th>
+                            <th class="text-center">企業種別</th>
+                            <th class="text-end">現在価格</th>
+                            <th class="text-end">年間配当</th>
+                            <th class="text-center">配当利回り</th>
+                            <th class="text-end">買い目標(3%)</th>
+                            <th class="text-end">買い目標(5%)</th>
+                            <th class="text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in long_stocks %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ s.stock_name }}</div>
+                                <small class="text-muted">{{ s.ticker }}</small>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge {% if s.market_type == 'international' %}bg-primary{% else %}bg-purple{% endif %}">
+                                    {{ s.market_type_label if s.market_type_label else ('国際優良企業' if s.market_type == 'international' else '財務優良企業') }}
+                                </span>
+                            </td>
+                            <td class="text-end fw-bold">
+                                {% if s.current_price %}
+                                    ¥{{ '{:,.0f}'.format(s.current_price) }}
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if s.annual_dividend %}
+                                    ¥{{ '%.0f' % s.annual_dividend }}
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if s.dividend_yield %}
+                                    <span class="badge bg-success">{{ '%.2f' % s.dividend_yield }}%</span>
+                                {% else %}
+                                    <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if s.max_buy_price %}
+                                    <span class="text-success">¥{{ '{:,.0f}'.format(s.max_buy_price) }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if s.min_buy_price %}
+                                    <span class="text-warning">¥{{ '{:,.0f}'.format(s.min_buy_price) }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-outline-light btn-sm"
+                                        onclick="openAddPortfolioModal('{{ s.ticker }}', '{{ s.stock_name }}', '長期', '{{ s.current_price or '' }}', 'long')">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-secondary">
+                <i class="bi bi-info-circle me-2"></i>現在、条件を満たす長期候補はありません。
+            </div>
+        {% endif %}
+    </section>
+</div>
+
+<!-- ポートフォリオ追加モーダル（ダッシュボードからのクイック追加） -->
+<div class="modal fade" id="quickAddModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle me-2"></i>ポートフォリオに追加
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('portfolio_add') }}" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">銘柄コード</label>
+                        <input type="text" class="form-control bg-dark text-white"
+                               name="ticker" id="quick-ticker" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">銘柄名</label>
+                        <input type="text" class="form-control bg-dark text-white"
+                               name="stock_name" id="quick-stock-name" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">投資種別</label>
+                        <select class="form-select bg-dark text-white" name="investment_type"
+                                id="quick-investment-type">
+                            <option value="short">短期</option>
+                            <option value="medium">中期</option>
+                            <option value="long">長期</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">区分</label>
+                        <input type="text" class="form-control bg-dark text-white"
+                               name="category" id="quick-category">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">購入日</label>
+                        <input type="date" class="form-control bg-dark text-white"
+                               name="purchase_date" id="quick-purchase-date"
+                               value="{{ now.strftime('%Y-%m-%d') if now else '' }}">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">購入単価 (円)</label>
+                            <input type="number" class="form-control bg-dark text-white"
+                                   name="purchase_price" id="quick-price"
+                                   step="0.01" min="1" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">株数</label>
+                            <input type="number" class="form-control bg-dark text-white"
+                                   name="shares" id="quick-shares"
+                                   min="1" value="100" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">メモ</label>
+                        <textarea class="form-control bg-dark text-white" name="notes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary"
+                            data-bs-dismiss="modal">キャンセル</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-plus-circle me-1"></i>追加する
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ダッシュボードのクイック追加モーダルを開く
+    function openAddPortfolioModal(ticker, stockName, category, price, investType) {
+        document.getElementById('quick-ticker').value = ticker;
+        document.getElementById('quick-stock-name').value = stockName;
+        document.getElementById('quick-category').value = category;
+        if (price) document.getElementById('quick-price').value = price;
+
+        // 投資種別の設定
+        const typeSelect = document.getElementById('quick-investment-type');
+        if (investType === 'medium') {
+            typeSelect.value = 'medium';
+        } else if (investType === 'long') {
+            typeSelect.value = 'long';
+        } else {
+            typeSelect.value = 'short';
+        }
+
+        // 今日の日付をセット
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('quick-purchase-date').value = today;
+
+        const modal = new bootstrap.Modal(document.getElementById('quickAddModal'));
+        modal.show();
+    }
+</script>
+{% endblock %}

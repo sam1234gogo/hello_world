@@ -1,0 +1,1018 @@
+{% extends "base.html" %}
+{% block title %}シミュレーション - 株式投資アシスタント{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h2 class="mb-1">
+        <i class="bi bi-calculator me-2 text-info"></i>過去時点シミュレーション
+    </h2>
+    <p class="text-muted small mb-0">
+        過去の特定時点での推奨銘柄を確認し、その後のトレード結果をシミュレーションします。
+        <span class="text-warning ms-2">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>過去の結果は将来の収益を保証しません。
+        </span>
+    </p>
+</div>
+
+<!-- ==============================
+     STEP 1: 購入時点の選択
+=============================== -->
+<div class="card bg-dark border border-info mb-4">
+    <div class="card-header border-info d-flex align-items-center">
+        <span class="badge bg-info text-dark me-2 fs-6">STEP 1</span>
+        <h5 class="mb-0 text-info">購入時点を選択</h5>
+    </div>
+    <div class="card-body">
+        <div class="row align-items-end g-3">
+            <div class="col-md-4">
+                <label class="form-label fw-bold">基準日（この日時点での推奨銘柄を表示）</label>
+                <input type="date" class="form-control bg-dark text-white border-secondary"
+                       id="screen-date"
+                       max="{{ now_date }}"
+                       value="{{ default_date }}">
+                <small class="text-muted">2015年以降で設定してください（データ有効期間）</small>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-bold">対象銘柄数</label>
+                <select class="form-select bg-dark text-white border-secondary" id="max-stocks">
+                    <option value="15" selected>クイック（15銘柄・約2秒）</option>
+                    <option value="30">Core30（30銘柄・約5秒）</option>
+                    <option value="70">Core30+Large70（70銘柄・約15秒）</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-info w-100" id="btn-screen" onclick="runScreening()">
+                    <i class="bi bi-search me-2"></i>この時点の推奨銘柄を表示
+                </button>
+            </div>
+        </div>
+
+        <!-- ローディング表示 -->
+        <div id="screening-loading" class="mt-3 d-none">
+            <div class="d-flex align-items-center text-info mb-2">
+                <div class="spinner-border spinner-border-sm me-3"></div>
+                <span id="loading-text">株価データを取得中...</span>
+                <span class="ms-3 text-warning fw-bold" id="progress-counter"></span>
+            </div>
+            <div class="progress" style="height:8px;">
+                <div class="progress-bar bg-info" id="progress-bar"
+                     style="width:0%; transition:width 0.3s"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==============================
+     STEP 2: 推奨銘柄一覧
+=============================== -->
+<div id="screening-results" class="d-none">
+    <div class="card bg-dark border border-warning mb-4">
+        <div class="card-header border-warning d-flex align-items-center">
+            <span class="badge bg-warning text-dark me-2 fs-6">STEP 2</span>
+            <h5 class="mb-0 text-warning">
+                <span id="result-date-label"></span> 時点の推奨銘柄
+            </h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">
+                銘柄の行をクリックすると、その銘柄のシミュレーション設定（STEP 3）に進みます。
+            </p>
+
+            <!-- タブ切り替え -->
+            <ul class="nav nav-tabs mb-3" id="resultTabs">
+                <li class="nav-item">
+                    <button class="nav-link active text-warning" data-bs-toggle="tab"
+                            data-bs-target="#tab-anshin">
+                        <i class="bi bi-star-fill me-1"></i>
+                        短期 安心割安株 <span class="badge bg-warning text-dark ms-1" id="cnt-anshin">0</span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link text-info" data-bs-toggle="tab"
+                            data-bs-target="#tab-normal">
+                        短期 通常/成長株 <span class="badge bg-info text-dark ms-1" id="cnt-normal">0</span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link text-success" data-bs-toggle="tab"
+                            data-bs-target="#tab-medium">
+                        中期候補 <span class="badge bg-success ms-1" id="cnt-medium">0</span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" style="color:#a78bfa" data-bs-toggle="tab"
+                            data-bs-target="#tab-long">
+                        長期候補 <span class="badge ms-1" style="background:#7c3aed" id="cnt-long">0</span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link text-warning" data-bs-toggle="tab"
+                            data-bs-target="#tab-eps">
+                        <i class="bi bi-lightning-fill me-1"></i>EPS上方修正
+                        <span class="badge bg-warning text-dark ms-1" id="cnt-eps">0</span>
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content">
+                <!-- 短期 安心割安株 -->
+                <div class="tab-pane fade show active" id="tab-anshin">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover table-sm">
+                            <thead class="table-warning text-dark">
+                                <tr>
+                                    <th>銘柄</th>
+                                    <th class="text-center">企業種別</th>
+                                    <th class="text-end">株価</th>
+                                    <th class="text-center">スコア</th>
+                                    <th class="text-center">PBR</th>
+                                    <th class="text-center">PER</th>
+                                    <th class="text-center">ROE</th>
+                                    <th class="text-center">配当利回り</th>
+                                    <th class="text-center">投資種別</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-anshin"></tbody>
+                        </table>
+                    </div>
+                    <div id="empty-anshin" class="alert alert-secondary d-none">
+                        <i class="bi bi-info-circle me-2"></i>この時点では安心割安株の条件を満たす銘柄はありませんでした。
+                    </div>
+                </div>
+
+                <!-- 短期 通常/成長株 -->
+                <div class="tab-pane fade" id="tab-normal">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover table-sm">
+                            <thead class="table-info text-dark">
+                                <tr>
+                                    <th>銘柄</th>
+                                    <th class="text-center">企業種別</th>
+                                    <th class="text-end">株価</th>
+                                    <th class="text-center">スコア</th>
+                                    <th class="text-center">区分</th>
+                                    <th class="text-center">PBR</th>
+                                    <th class="text-center">PER</th>
+                                    <th class="text-center">配当利回り</th>
+                                    <th class="text-center">投資種別</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-normal"></tbody>
+                        </table>
+                    </div>
+                    <div id="empty-normal" class="alert alert-secondary d-none">
+                        <i class="bi bi-info-circle me-2"></i>この時点では通常割安株・成長株の条件を満たす銘柄はありませんでした。
+                    </div>
+                </div>
+
+                <!-- 中期候補 -->
+                <div class="tab-pane fade" id="tab-medium">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover table-sm">
+                            <thead class="table-success text-dark">
+                                <tr>
+                                    <th>銘柄</th>
+                                    <th class="text-center">企業種別</th>
+                                    <th class="text-end">株価</th>
+                                    <th class="text-center">PBR</th>
+                                    <th class="text-center">閾値PBR</th>
+                                    <th class="text-center">ROE</th>
+                                    <th class="text-center">配当利回り</th>
+                                    <th class="text-center">投資種別</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-medium"></tbody>
+                        </table>
+                    </div>
+                    <div id="empty-medium" class="alert alert-secondary d-none">
+                        <i class="bi bi-info-circle me-2"></i>この時点では中期投資の条件を満たす銘柄はありませんでした。
+                    </div>
+                </div>
+
+                <!-- 長期候補 -->
+                <div class="tab-pane fade" id="tab-long">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover table-sm">
+                            <thead style="background:#4c1d95; color:white;">
+                                <tr>
+                                    <th>銘柄</th>
+                                    <th class="text-center">企業種別</th>
+                                    <th class="text-end">株価</th>
+                                    <th class="text-center">配当利回り</th>
+                                    <th class="text-end">年間配当</th>
+                                    <th class="text-end">買い目標(3%)</th>
+                                    <th class="text-end">買い目標(5%)</th>
+                                    <th class="text-center">投資種別</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-long"></tbody>
+                        </table>
+                    </div>
+                    <div id="empty-long" class="alert alert-secondary d-none">
+                        <i class="bi bi-info-circle me-2"></i>この時点では長期投資の条件を満たす銘柄はありませんでした。
+                    </div>
+                </div>
+
+                <!-- EPS上方修正トリガー -->
+                <div class="tab-pane fade" id="tab-eps">
+                    <div class="alert alert-warning small mb-2">
+                        <i class="bi bi-lightning-fill me-1"></i>
+                        <strong>EPS上方修正トリガー（通期予想修正履歴）:</strong>
+                        株探の通期予想修正履歴（初回予想・各四半期修正）をスクレイピングし、
+                        直前発表比 <strong>+10%以上</strong> の上方修正があった銘柄を表示します。
+                        各時点以前のデータのみ参照（look-ahead なし）。
+                        データ不足時は年次純利益 前期比で代替。
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover table-sm">
+                            <thead class="table-warning text-dark">
+                                <tr>
+                                    <th>銘柄</th>
+                                    <th class="text-center">企業種別</th>
+                                    <th class="text-end">株価</th>
+                                    <th class="text-center">EPS改訂率</th>
+                                    <th class="text-center">区分</th>
+                                    <th class="text-center">スコア</th>
+                                    <th class="text-center">PBR</th>
+                                    <th class="text-center">ROE</th>
+                                    <th class="text-center">配当利回り</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-eps"></tbody>
+                        </table>
+                    </div>
+                    <div id="empty-eps" class="alert alert-secondary d-none">
+                        <i class="bi bi-info-circle me-2"></i>この時点ではEPS上方修正シグナルの銘柄はありませんでした（年次決算2期分のデータが必要）。
+                    </div>
+                </div>
+            </div><!-- /tab-content -->
+        </div>
+    </div>
+</div><!-- /screening-results -->
+
+
+<!-- ==============================
+     STEP 3: シミュレーション設定
+=============================== -->
+<div id="sim-config-section" class="d-none">
+    <div class="card bg-dark border border-success mb-4">
+        <div class="card-header border-success d-flex align-items-center">
+            <span class="badge bg-success me-2 fs-6">STEP 3</span>
+            <h5 class="mb-0 text-success">シミュレーション設定</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">選択銘柄</label>
+                    <div class="form-control bg-secondary text-white border-secondary" id="selected-stock-label">
+                        （STEP 2 の表から銘柄を選択）
+                    </div>
+                    <input type="hidden" id="sim-ticker">
+                    <input type="hidden" id="sim-category">
+                    <input type="hidden" id="sim-annual-dividend">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">投資種別</label>
+                    <select class="form-select bg-dark text-white border-secondary" id="sim-strategy"
+                            onchange="onStrategyChange()">
+                        <option value="short">短期投資</option>
+                        <option value="medium">中期投資</option>
+                        <option value="long">長期投資</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">購入日</label>
+                    <input type="date" class="form-control bg-dark text-white border-secondary"
+                           id="sim-purchase-date">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold">購入単価（円）</label>
+                    <input type="number" class="form-control bg-dark text-white border-secondary"
+                           id="sim-purchase-price" placeholder="例: 2800">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label fw-bold">株数</label>
+                    <input type="number" class="form-control bg-dark text-white border-secondary"
+                           id="sim-shares" value="100">
+                </div>
+                <!-- 長期専用フィールド -->
+                <div class="col-md-2 d-none" id="long-fields">
+                    <label class="form-label fw-bold">目標利回り（%）</label>
+                    <input type="number" class="form-control bg-dark text-white border-secondary"
+                           id="sim-target-yield" value="3.5" step="0.1" min="1" max="6">
+                </div>
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-success px-5" id="btn-run-sim" onclick="runSimulation()">
+                    <i class="bi bi-play-circle me-2"></i>シミュレーション実行
+                </button>
+                <small class="text-muted ms-3">購入価格を入力していない場合は選択日の終値を使用します</small>
+            </div>
+            <!-- シミュレーション実行中 -->
+            <div id="sim-loading" class="mt-3 d-none">
+                <div class="d-flex align-items-center text-success">
+                    <div class="spinner-border spinner-border-sm me-3"></div>
+                    <span>トレードシミュレーション計算中...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ==============================
+     STEP 4: シミュレーション結果
+=============================== -->
+<div id="sim-result-section" class="d-none">
+    <div class="card bg-dark border border-light mb-4">
+        <div class="card-header border-light d-flex align-items-center">
+            <span class="badge bg-light text-dark me-2 fs-6">STEP 4</span>
+            <h5 class="mb-0 text-light">シミュレーション結果</h5>
+            <button class="btn btn-outline-secondary btn-sm ms-auto" onclick="resetSimulation()">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>リセット
+            </button>
+        </div>
+        <div class="card-body">
+
+            <!-- KPI カード -->
+            <div class="row g-3 mb-4" id="kpi-cards">
+                <div class="col-6 col-md-3">
+                    <div class="card bg-secondary text-center p-3">
+                        <div class="text-muted small">結果</div>
+                        <div class="fw-bold fs-5" id="kpi-outcome">-</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card bg-secondary text-center p-3">
+                        <div class="text-muted small">損益</div>
+                        <div class="fw-bold fs-5" id="kpi-pnl">-</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card bg-secondary text-center p-3">
+                        <div class="text-muted small">リターン率</div>
+                        <div class="fw-bold fs-5" id="kpi-pnl-rate">-</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card bg-secondary text-center p-3">
+                        <div class="text-muted small">保有日数</div>
+                        <div class="fw-bold fs-5" id="kpi-days">-</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card bg-secondary text-center p-3">
+                        <div class="text-muted small">購入単価</div>
+                        <div class="fw-bold fs-5" id="kpi-buy">-</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card bg-secondary text-center p-3">
+                        <div class="text-muted small">売却・現在価格</div>
+                        <div class="fw-bold fs-5" id="kpi-sell">-</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card bg-secondary text-center p-3">
+                        <div class="text-muted small">平均取得単価</div>
+                        <div class="fw-bold fs-5" id="kpi-avg">-</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card bg-secondary text-center p-3">
+                        <div class="text-muted small">ナンピン回数</div>
+                        <div class="fw-bold fs-5" id="kpi-nanpin">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 株価チャート -->
+            <div id="sim-chart" style="height: 420px;" class="mb-4"></div>
+
+            <!-- 取引ログ -->
+            <h6 class="text-light mb-2">
+                <i class="bi bi-journal-text me-2"></i>取引ログ
+            </h6>
+            <div class="table-responsive">
+                <table class="table table-dark table-sm table-bordered">
+                    <thead class="table-secondary text-dark">
+                        <tr>
+                            <th>日付</th>
+                            <th>アクション</th>
+                            <th class="text-end">価格（円）</th>
+                            <th class="text-end">株数</th>
+                            <th>備考</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trade-log-tbody"></tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+</div><!-- /sim-result-section -->
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+// ============================================================
+// グローバル変数
+// ============================================================
+let screeningData = null;   // スクリーニング結果を保持
+let selectedStock = null;   // 選択中の銘柄情報
+
+// ページロード時に今日の日付・デフォルト日付をセット
+document.addEventListener('DOMContentLoaded', () => {
+    const today   = new Date();
+    const oneYear = new Date(today);
+    oneYear.setFullYear(today.getFullYear() - 1);
+
+    document.getElementById('screen-date').max   = today.toISOString().split('T')[0];
+    document.getElementById('screen-date').value = oneYear.toISOString().split('T')[0];
+});
+
+// ============================================================
+// STEP 1 → STEP 2: スクリーニング実行
+// ============================================================
+let _evtSource = null;  // 接続中の EventSource
+
+function runScreening() {
+    const dateVal   = document.getElementById('screen-date').value;
+    if (!dateVal) { alert('日付を選択してください'); return; }
+    const maxStocks = parseInt(document.getElementById('max-stocks').value);
+
+    // ── 最初にローディングを表示（DOM操作エラーより前に確実に見せる）
+    document.getElementById('screening-loading').classList.remove('d-none');
+    document.getElementById('btn-screen').disabled = true;
+    document.getElementById('progress-counter').textContent = '';
+    document.getElementById('progress-bar').style.width = '0%';
+    document.getElementById('loading-text').textContent = '株価データを取得中...';
+
+    // 前の接続があれば閉じる
+    if (_evtSource) { _evtSource.close(); _evtSource = null; }
+
+    // UI 初期化
+    screeningData = { short_anshin: [], short_normal: [], medium: [], long: [], eps_trigger: [] };
+    ['tbody-anshin','tbody-normal','tbody-medium','tbody-long','tbody-eps'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+    });
+    ['empty-anshin','empty-normal','empty-medium','empty-long','empty-eps'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('d-none');
+    });
+    ['cnt-anshin','cnt-normal','cnt-medium','cnt-long','cnt-eps'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '0';
+    });
+
+    document.getElementById('screening-results').classList.remove('d-none');
+    document.getElementById('screening-results').scrollIntoView({behavior:'smooth'});
+    document.getElementById('sim-config-section').classList.add('d-none');
+    document.getElementById('sim-result-section').classList.add('d-none');
+    document.getElementById('result-date-label').textContent = dateVal;
+
+    try {
+        _evtSource = new EventSource(
+            `/simulation/screen_stream?date=${dateVal}&max_stocks=${maxStocks}`
+        );
+    } catch(e) {
+        document.getElementById('screening-loading').classList.add('d-none');
+        document.getElementById('btn-screen').disabled = false;
+        alert('接続エラー: ' + e.message);
+        return;
+    }
+
+    _evtSource.onmessage = function(evt) {
+        try {
+            const d = JSON.parse(evt.data);
+
+            if (d.type === 'cached') {
+                screeningData = d.results;
+                renderScreeningResults(dateVal, screeningData);
+                finishScreening();
+
+            } else if (d.type === 'progress') {
+                const pct = Math.round(d.done / d.total * 100);
+                document.getElementById('progress-bar').style.width = pct + '%';
+                document.getElementById('progress-counter').textContent =
+                    `${d.done} / ${d.total} 銘柄完了`;
+                document.getElementById('loading-text').textContent =
+                    `処理中: ${d.name}`;
+
+            } else if (d.type === 'stock') {
+                screeningData[d.category].push(d.entry);
+                appendEntryRow(d.category, d.entry);
+                updateCounts();
+
+            } else if (d.type === 'done') {
+                sortTableByScore('tbody-anshin', screeningData.short_anshin);
+                sortTableByScore('tbody-normal',  screeningData.short_normal);
+                finishScreening();
+
+            } else if (d.type === 'error') {
+                alert('サーバーエラーが発生しました');
+                finishScreening();
+            }
+        } catch(e) {
+            console.error('SSEメッセージ処理エラー:', e);
+            finishScreening();
+        }
+    };
+
+    _evtSource.onerror = function() {
+        if (_evtSource) { _evtSource.close(); _evtSource = null; }
+        finishScreening();
+    };
+}
+
+function finishScreening() {
+    if (_evtSource) { _evtSource.close(); _evtSource = null; }
+    document.getElementById('screening-loading').classList.add('d-none');
+    document.getElementById('btn-screen').disabled = false;
+    document.getElementById('sim-config-section').classList.remove('d-none');
+    updateCounts();
+}
+
+function updateCounts() {
+    document.getElementById('cnt-anshin').textContent = screeningData.short_anshin.length;
+    document.getElementById('cnt-normal').textContent = screeningData.short_normal.length;
+    document.getElementById('cnt-medium').textContent = screeningData.medium.length;
+    document.getElementById('cnt-long'  ).textContent = screeningData.long.length;
+    document.getElementById('cnt-eps'   ).textContent = (screeningData.eps_trigger||[]).length;
+}
+
+function appendEntryRow(category, s) {
+    const tbodyMap = {
+        short_anshin: 'tbody-anshin',
+        short_normal: 'tbody-normal',
+        medium:       'tbody-medium',
+        long:         'tbody-long',
+        eps_trigger:  'tbody-eps',
+    };
+    const tbody = document.getElementById(tbodyMap[category]);
+    if (!tbody) return;
+    document.getElementById('empty-' + tbodyMap[category].replace('tbody-','')).classList.add('d-none');
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = buildRowInner(category, s);
+    tr.setAttribute('onclick', `selectStock('${s.ticker}','${s.stock_name}','${s.category||category}','${catToStrategy(category)}',${s.price||0},${s.annual_dividend||0})`);
+    tr.style.cursor = 'pointer';
+    tr.title = 'クリックでシミュレーション設定へ';
+    tbody.appendChild(tr);
+}
+
+function catToStrategy(cat) {
+    if (cat === 'medium') return 'medium';
+    if (cat === 'long')   return 'long';
+    return 'short';
+}
+
+function epsBadge(s) {
+    if (!s.eps_revision_signal) return '';
+    const rate = s.eps_revision_rate != null ? '+'+s.eps_revision_rate.toFixed(1)+'%' : '';
+    return `<span class="badge bg-warning text-dark ms-1" title="EPS上方修正 ${rate}"><i class="bi bi-lightning-fill"></i>${rate}</span>`;
+}
+
+function buildRowInner(category, s) {
+    const mb = marketBadge(s.market_type, s.market_type_label);
+    const price = fmtPrice(s.price);
+    const dy    = s.dividend_yield != null ? s.dividend_yield.toFixed(2)+'%' : 'N/A';
+    const roe   = s.roe != null ? s.roe.toFixed(1)+'%' : 'N/A';
+    const eps   = epsBadge(s);
+
+    if (category === 'eps_trigger') {
+        const sc = s.score >= 4 ? 'bg-success' : s.score >= 2 ? 'bg-info text-dark' : 'bg-secondary';
+        const rate = s.eps_revision_rate != null ? '+'+s.eps_revision_rate.toFixed(1)+'%' : 'N/A';
+        return `<td><div class="fw-bold">${s.stock_name}</div>
+                    <small class="text-muted">${s.ticker}</small></td>
+                <td class="text-center">${mb}</td>
+                <td class="text-end fw-bold">${price}</td>
+                <td class="text-center"><span class="badge bg-warning text-dark"><i class="bi bi-lightning-fill me-1"></i>${rate}</span></td>
+                <td class="text-center"><span class="badge bg-secondary">${s.category||'―'}</span></td>
+                <td class="text-center"><span class="badge ${sc}">${(s.score||0)>=0?'+':''}${s.score||0}点</span></td>
+                <td class="text-center">${fmt(s.pbr)}</td>
+                <td class="text-center">${roe}</td>
+                <td class="text-center">${dy}</td>`;
+    }
+
+    if (category === 'short_anshin') {
+        const sc = s.score >= 4 ? 'bg-success' : s.score >= 2 ? 'bg-info text-dark' : 'bg-warning text-dark';
+        return `<td><div class="fw-bold text-warning"><i class="bi bi-star-fill text-warning me-1"></i>${s.stock_name}${eps}</div>
+                    <small class="text-muted">${s.ticker}</small></td>
+                <td class="text-center">${mb}</td>
+                <td class="text-end fw-bold">${price}</td>
+                <td class="text-center"><span class="badge ${sc}">${s.score>=0?'+':''}${s.score}点</span></td>
+                <td class="text-center">${fmt(s.pbr)}</td>
+                <td class="text-center">${fmt(s.per,1)}</td>
+                <td class="text-center">${roe}</td>
+                <td class="text-center">${dy}</td>
+                <td class="text-center"><span class="badge bg-warning text-dark">短期</span></td>`;
+    }
+    if (category === 'short_normal') {
+        return `<td><div class="fw-bold">${s.stock_name}${eps}</div>
+                    <small class="text-muted">${s.ticker}</small></td>
+                <td class="text-center">${mb}</td>
+                <td class="text-end fw-bold">${price}</td>
+                <td class="text-center"><span class="badge bg-info text-dark">${s.score>=0?'+':''}${s.score}点</span></td>
+                <td class="text-center"><span class="badge ${s.category==='成長株'?'bg-success':'bg-secondary'}">${s.category}</span></td>
+                <td class="text-center">${fmt(s.pbr)}</td>
+                <td class="text-center">${fmt(s.per,1)}</td>
+                <td class="text-center">${dy}</td>
+                <td class="text-center"><span class="badge bg-info text-dark">短期</span></td>`;
+    }
+    if (category === 'medium') {
+        return `<td><div class="fw-bold">${s.stock_name}${eps}</div>
+                    <small class="text-muted">${s.ticker}</small></td>
+                <td class="text-center">${mb}</td>
+                <td class="text-end fw-bold">${price}</td>
+                <td class="text-center">${fmt(s.pbr)}</td>
+                <td class="text-center text-success">${fmt(s.threshold_pbr,3)}</td>
+                <td class="text-center">${roe}</td>
+                <td class="text-center">${dy}</td>
+                <td class="text-center"><span class="badge bg-success">中期</span></td>`;
+    }
+    // long
+    return `<td><div class="fw-bold">${s.stock_name}${eps}</div>
+                <small class="text-muted">${s.ticker}</small></td>
+            <td class="text-center">${mb}</td>
+            <td class="text-end fw-bold">${price}</td>
+            <td class="text-center"><span class="badge bg-success">${dy}</span></td>
+            <td class="text-end">${s.annual_dividend!=null?'¥'+s.annual_dividend:'N/A'}</td>
+            <td class="text-end text-success">${fmtPrice(s.max_buy_price)}</td>
+            <td class="text-end text-warning">${fmtPrice(s.min_buy_price)}</td>
+            <td class="text-center"><span class="badge" style="background:#7c3aed">長期</span></td>`;
+}
+
+function sortTableByScore(tbodyId, list) {
+    list.sort((a, b) => (b.score||0) - (a.score||0));
+    const tbody = document.getElementById(tbodyId);
+    const rows  = Array.from(tbody.querySelectorAll('tr'));
+    // データ順に DOM を並べ直す
+    list.forEach(entry => {
+        const row = rows.find(r => r.querySelector('small') &&
+                                   r.querySelector('small').textContent === entry.ticker);
+        if (row) tbody.appendChild(row);
+    });
+}
+
+// ============================================================
+// STEP 2: 推奨銘柄テーブルを描画
+// ============================================================
+function marketBadge(mtype, label) {
+    const cls = mtype === 'international' ? 'bg-primary' : 'bg-purple';
+    return `<span class="badge ${cls}">${label || (mtype==='international'?'国際優良企業':'財務優良企業')}</span>`;
+}
+function fmt(v, digits=2) { return v != null ? v.toFixed(digits) : 'N/A'; }
+function fmtPrice(v) { return v != null ? '¥'+v.toLocaleString() : 'N/A'; }
+
+function renderScreeningResults(dateStr, data) {
+    document.getElementById('result-date-label').textContent = dateStr;
+
+    // タブごとにレンダリング
+    renderAnshin(data.short_anshin || []);
+    renderNormal(data.short_normal || []);
+    renderMedium(data.medium       || []);
+    renderLong(data.long           || []);
+    renderEpsTrigger(data.eps_trigger || []);
+
+    document.getElementById('cnt-anshin').textContent = (data.short_anshin||[]).length;
+    document.getElementById('cnt-normal').textContent = (data.short_normal||[]).length;
+    document.getElementById('cnt-medium').textContent = (data.medium      ||[]).length;
+    document.getElementById('cnt-long'  ).textContent = (data.long        ||[]).length;
+    document.getElementById('cnt-eps'   ).textContent = (data.eps_trigger ||[]).length;
+}
+
+function stockRow(s, strategy) {
+    // 銘柄行クリック → STEP3に値をセット
+    return `onclick="selectStock('${s.ticker}','${s.stock_name}','${s.category||strategy}','${strategy}',${s.price||0},${s.annual_dividend||0})"
+            style="cursor:pointer" title="クリックでシミュレーション設定へ"`;
+}
+
+function renderAnshin(list) {
+    const tbody = document.getElementById('tbody-anshin');
+    const empty = document.getElementById('empty-anshin');
+    if (!list.length) { tbody.innerHTML=''; empty.classList.remove('d-none'); return; }
+    empty.classList.add('d-none');
+    tbody.innerHTML = list.map(s => {
+        const eb = s.eps_revision_signal ? `<span class="badge bg-warning text-dark ms-1" title="EPS上方修正 +${(s.eps_revision_rate||0).toFixed(1)}%"><i class="bi bi-lightning-fill"></i></span>` : '';
+        return `
+        <tr ${stockRow(s,'short')} class="table-row-hover">
+            <td><div class="fw-bold text-warning">
+                    <i class="bi bi-star-fill text-warning me-1"></i>${s.stock_name}${eb}
+                </div>
+                <small class="text-muted">${s.ticker}</small></td>
+            <td class="text-center">${marketBadge(s.market_type, s.market_type_label)}</td>
+            <td class="text-end fw-bold">${fmtPrice(s.price)}</td>
+            <td class="text-center"><span class="badge ${s.score>=4?'bg-success':s.score>=2?'bg-info text-dark':'bg-warning text-dark'}">${s.score>=0?'+':''}${s.score}点</span></td>
+            <td class="text-center">${fmt(s.pbr)}</td>
+            <td class="text-center">${fmt(s.per,1)}</td>
+            <td class="text-center">${s.roe!=null?s.roe.toFixed(1)+'%':'N/A'}</td>
+            <td class="text-center">${s.dividend_yield!=null?s.dividend_yield.toFixed(2)+'%':'N/A'}</td>
+            <td class="text-center"><span class="badge bg-warning text-dark">短期</span></td>
+        </tr>`;
+    }).join('');
+}
+
+function renderNormal(list) {
+    const tbody = document.getElementById('tbody-normal');
+    const empty = document.getElementById('empty-normal');
+    if (!list.length) { tbody.innerHTML=''; empty.classList.remove('d-none'); return; }
+    empty.classList.add('d-none');
+    tbody.innerHTML = list.map(s => {
+        const eb = s.eps_revision_signal ? `<span class="badge bg-warning text-dark ms-1" title="EPS上方修正 +${(s.eps_revision_rate||0).toFixed(1)}%"><i class="bi bi-lightning-fill"></i></span>` : '';
+        return `
+        <tr ${stockRow(s,'short')} class="table-row-hover">
+            <td><div class="fw-bold">${s.stock_name}${eb}</div>
+                <small class="text-muted">${s.ticker}</small></td>
+            <td class="text-center">${marketBadge(s.market_type, s.market_type_label)}</td>
+            <td class="text-end fw-bold">${fmtPrice(s.price)}</td>
+            <td class="text-center"><span class="badge bg-info text-dark">${s.score>=0?'+':''}${s.score}点</span></td>
+            <td class="text-center"><span class="badge ${s.category==='成長株'?'bg-success':'bg-secondary'}">${s.category}</span></td>
+            <td class="text-center">${fmt(s.pbr)}</td>
+            <td class="text-center">${fmt(s.per,1)}</td>
+            <td class="text-center">${s.dividend_yield!=null?s.dividend_yield.toFixed(2)+'%':'N/A'}</td>
+            <td class="text-center"><span class="badge bg-info text-dark">短期</span></td>
+        </tr>`;
+    }).join('');
+}
+
+function renderMedium(list) {
+    const tbody = document.getElementById('tbody-medium');
+    const empty = document.getElementById('empty-medium');
+    if (!list.length) { tbody.innerHTML=''; empty.classList.remove('d-none'); return; }
+    empty.classList.add('d-none');
+    tbody.innerHTML = list.map(s => `
+        <tr ${stockRow(s,'medium')} class="table-row-hover">
+            <td><div class="fw-bold">${s.stock_name}</div>
+                <small class="text-muted">${s.ticker}</small></td>
+            <td class="text-center">${marketBadge(s.market_type, s.market_type_label)}</td>
+            <td class="text-end fw-bold">${fmtPrice(s.price)}</td>
+            <td class="text-center">${fmt(s.pbr)}</td>
+            <td class="text-center text-success">${fmt(s.threshold_pbr,3)}</td>
+            <td class="text-center">${s.roe!=null?s.roe.toFixed(1)+'%':'N/A'}</td>
+            <td class="text-center">${s.dividend_yield!=null?s.dividend_yield.toFixed(2)+'%':'N/A'}</td>
+            <td class="text-center"><span class="badge bg-success">中期</span></td>
+        </tr>`).join('');
+}
+
+function renderLong(list) {
+    const tbody = document.getElementById('tbody-long');
+    const empty = document.getElementById('empty-long');
+    if (!list.length) { tbody.innerHTML=''; empty.classList.remove('d-none'); return; }
+    empty.classList.add('d-none');
+    tbody.innerHTML = list.map(s => `
+        <tr ${stockRow(s,'long')} class="table-row-hover">
+            <td><div class="fw-bold">${s.stock_name}</div>
+                <small class="text-muted">${s.ticker}</small></td>
+            <td class="text-center">${marketBadge(s.market_type, s.market_type_label)}</td>
+            <td class="text-end fw-bold">${fmtPrice(s.price)}</td>
+            <td class="text-center"><span class="badge bg-success">${s.dividend_yield!=null?s.dividend_yield.toFixed(2)+'%':'N/A'}</span></td>
+            <td class="text-end">${s.annual_dividend!=null?'¥'+s.annual_dividend:'N/A'}</td>
+            <td class="text-end text-success">${fmtPrice(s.max_buy_price)}</td>
+            <td class="text-end text-warning">${fmtPrice(s.min_buy_price)}</td>
+            <td class="text-center"><span class="badge" style="background:#7c3aed">長期</span></td>
+        </tr>`).join('');
+}
+
+function renderEpsTrigger(list) {
+    const tbody = document.getElementById('tbody-eps');
+    const empty = document.getElementById('empty-eps');
+    if (!list.length) { tbody.innerHTML=''; empty.classList.remove('d-none'); return; }
+    empty.classList.add('d-none');
+    tbody.innerHTML = list.map(s => {
+        const rate = s.eps_revision_rate != null ? '+'+s.eps_revision_rate.toFixed(1)+'%' : 'N/A';
+        const sc = s.score>=4?'bg-success':s.score>=2?'bg-info text-dark':'bg-secondary';
+        return `
+        <tr ${stockRow(s, s.category==='安心割安株'?'short':'short')} class="table-row-hover">
+            <td><div class="fw-bold">${s.stock_name}</div>
+                <small class="text-muted">${s.ticker}</small></td>
+            <td class="text-center">${marketBadge(s.market_type, s.market_type_label)}</td>
+            <td class="text-end fw-bold">${fmtPrice(s.price)}</td>
+            <td class="text-center"><span class="badge bg-warning text-dark">
+                <i class="bi bi-lightning-fill me-1"></i>${rate}</span></td>
+            <td class="text-center"><span class="badge bg-secondary">${s.category||'―'}</span></td>
+            <td class="text-center"><span class="badge ${sc}">${(s.score||0)>=0?'+':''}${s.score||0}点</span></td>
+            <td class="text-center">${fmt(s.pbr)}</td>
+            <td class="text-center">${s.roe!=null?s.roe.toFixed(1)+'%':'N/A'}</td>
+            <td class="text-center">${s.dividend_yield!=null?s.dividend_yield.toFixed(2)+'%':'N/A'}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ============================================================
+// STEP 2 → STEP 3: 銘柄を選択
+// ============================================================
+function selectStock(ticker, name, category, strategy, price, annualDiv) {
+    selectedStock = { ticker, name, category, strategy, price, annualDiv };
+
+    document.getElementById('sim-ticker').value         = ticker;
+    document.getElementById('sim-category').value       = category;
+    document.getElementById('sim-annual-dividend').value = annualDiv;
+    document.getElementById('selected-stock-label').textContent = `${ticker} - ${name}`;
+    document.getElementById('sim-strategy').value       = strategy;
+    document.getElementById('sim-purchase-date').value  = document.getElementById('screen-date').value;
+    document.getElementById('sim-purchase-price').value = price > 0 ? Math.round(price) : '';
+
+    onStrategyChange();
+
+    // STEP3にスクロール
+    document.getElementById('sim-config-section').scrollIntoView({ behavior: 'smooth' });
+}
+
+function onStrategyChange() {
+    const s = document.getElementById('sim-strategy').value;
+    const longFields = document.getElementById('long-fields');
+    if (s === 'long') { longFields.classList.remove('d-none'); }
+    else              { longFields.classList.add('d-none'); }
+}
+
+// ============================================================
+// STEP 3 → STEP 4: シミュレーション実行
+// ============================================================
+async function runSimulation() {
+    const ticker        = document.getElementById('sim-ticker').value;
+    const strategy      = document.getElementById('sim-strategy').value;
+    const category      = document.getElementById('sim-category').value;
+    const purchaseDate  = document.getElementById('sim-purchase-date').value;
+    const purchasePrice = parseFloat(document.getElementById('sim-purchase-price').value);
+    const shares        = parseInt(document.getElementById('sim-shares').value) || 100;
+    const annualDiv     = parseFloat(document.getElementById('sim-annual-dividend').value) || 0;
+    const targetYield   = parseFloat(document.getElementById('sim-target-yield').value) || 3.5;
+
+    if (!ticker)       { alert('STEP 2 の表から銘柄を選択してください'); return; }
+    if (!purchaseDate) { alert('購入日を入力してください'); return; }
+    if (!purchasePrice || purchasePrice <= 0) { alert('購入単価を入力してください'); return; }
+
+    document.getElementById('sim-loading').classList.remove('d-none');
+    document.getElementById('btn-run-sim').disabled = true;
+    document.getElementById('sim-result-section').classList.add('d-none');
+
+    try {
+        const payload = { ticker, strategy, category, purchase_date: purchaseDate,
+                          purchase_price: purchasePrice, shares,
+                          annual_dividend: annualDiv, target_yield: targetYield };
+
+        const resp = await fetch('/simulation/run_trade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const json = await resp.json();
+        if (json.error) { alert('エラー: ' + json.error); return; }
+
+        renderSimulationResult(json.simulation, ticker, document.getElementById('selected-stock-label').textContent);
+        document.getElementById('sim-result-section').classList.remove('d-none');
+        document.getElementById('sim-result-section').scrollIntoView({ behavior: 'smooth' });
+
+    } catch(e) {
+        alert('通信エラー: ' + e.message);
+    } finally {
+        document.getElementById('sim-loading').classList.add('d-none');
+        document.getElementById('btn-run-sim').disabled = false;
+    }
+}
+
+// ============================================================
+// STEP 4: 結果の描画
+// ============================================================
+function renderSimulationResult(sim, ticker, stockLabel) {
+    const result = sim.result;
+
+    // KPIカード
+    const outcomeColors = { '利益確定':'text-success', 'ロスカット':'text-danger',
+                             '中期/長期へ移行':'text-warning', '保有中（未確定）':'text-info' };
+    const cls = outcomeColors[result.outcome] || 'text-light';
+
+    document.getElementById('kpi-outcome').innerHTML  = `<span class="${cls}">${result.outcome}</span>`;
+    document.getElementById('kpi-pnl').innerHTML      = pnlHtml(result.pnl);
+    document.getElementById('kpi-pnl-rate').innerHTML = pnlRateHtml(result.pnl_rate);
+    document.getElementById('kpi-days').textContent   = result.days_held + '日';
+    document.getElementById('kpi-buy').textContent    = '¥' + sim.purchase_price.toLocaleString();
+    document.getElementById('kpi-sell').textContent   = '¥' + Math.round(result.sell_price).toLocaleString();
+    document.getElementById('kpi-avg').textContent    = '¥' + Math.round(result.avg_buy_price).toLocaleString();
+    document.getElementById('kpi-nanpin').textContent = result.nanpin_count + '回';
+
+    // チャート描画
+    drawChart(sim);
+
+    // 取引ログ
+    const tbody = document.getElementById('trade-log-tbody');
+    tbody.innerHTML = (sim.trade_log||[]).map(log => {
+        const actionCls = log.action.includes('購入')||log.action.includes('ナンピン') ? 'text-success' :
+                          log.action.includes('売却') ? 'text-danger' : 'text-warning';
+        return `<tr>
+            <td>${log.date}</td>
+            <td class="${actionCls} fw-bold">${log.action}</td>
+            <td class="text-end">¥${Math.round(log.price).toLocaleString()}</td>
+            <td class="text-end">${log.shares.toLocaleString()}株</td>
+            <td class="text-muted small">${log.note||''}</td>
+        </tr>`;
+    }).join('');
+}
+
+function pnlHtml(v) {
+    if (v == null) return '-';
+    const cls = v >= 0 ? 'text-success' : 'text-danger';
+    const sign = v >= 0 ? '+' : '';
+    return `<span class="${cls}">${sign}¥${Math.round(v).toLocaleString()}</span>`;
+}
+function pnlRateHtml(v) {
+    if (v == null) return '-';
+    const cls = v >= 0 ? 'text-success' : 'text-danger';
+    return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
+}
+
+// ============================================================
+// Plotlyチャート描画
+// ============================================================
+function drawChart(sim) {
+    const chart  = sim.chart;
+    const lines  = chart.lines || {};
+    const traces = [];
+
+    // 株価ライン
+    traces.push({
+        x: chart.dates, y: chart.prices,
+        type: 'scatter', mode: 'lines',
+        name: '株価', line: { color: '#60a5fa', width: 2 },
+    });
+
+    // 水平ライン（売り目標・ロスカット・ナンピン水準）
+    const lineConfigs = [
+        { key: 'sell_target',  name: '売り目標',     color: '#22c55e', dash: 'dash' },
+        { key: 'loss_cut',     name: 'ロスカット',   color: '#ef4444', dash: 'dot'  },
+        { key: 'resistance1',  name: 'レジスタンス', color: '#22c55e', dash: 'dash' },
+        { key: 'support1',     name: 'サポート1',    color: '#facc15', dash: 'dash' },
+        { key: 'support2',     name: 'サポート2',    color: '#f97316', dash: 'dot'  },
+        { key: 'nanpin_10',    name: 'ナンピン-10%', color: '#facc15', dash: 'dot'  },
+        { key: 'nanpin_15',    name: 'ナンピン-15%', color: '#fb923c', dash: 'dot'  },
+        { key: 'nanpin_20',    name: 'ナンピン-20%', color: '#f87171', dash: 'dot'  },
+    ];
+    lineConfigs.forEach(lc => {
+        if (lines[lc.key]) {
+            traces.push({
+                x: [chart.dates[0], chart.dates[chart.dates.length-1]],
+                y: [lines[lc.key], lines[lc.key]],
+                type: 'scatter', mode: 'lines',
+                name: lc.name,
+                line: { color: lc.color, dash: lc.dash, width: 1.5 },
+            });
+        }
+    });
+
+    // 購入ポイント（▲）
+    const buyPts = chart.buy_points || [];
+    if (buyPts.length) {
+        traces.push({
+            x: buyPts.map(p => p.date),
+            y: buyPts.map(p => p.price),
+            type: 'scatter', mode: 'markers',
+            name: '購入', marker: { symbol: 'triangle-up', color: '#22c55e', size: 14 },
+        });
+    }
+
+    // 売却ポイント（▼）
+    if (chart.sell_point) {
+        traces.push({
+            x: [chart.sell_point.date],
+            y: [chart.sell_point.price],
+            type: 'scatter', mode: 'markers',
+            name: '売却', marker: { symbol: 'triangle-down', color: '#ef4444', size: 14 },
+        });
+    }
+
+    const layout = {
+        paper_bgcolor: '#1a1a2e',
+        plot_bgcolor:  '#16213e',
+        font: { color: '#e2e8f0', size: 12 },
+        legend: { orientation: 'h', y: -0.2 },
+        xaxis: { gridcolor: '#334155', showgrid: true },
+        yaxis: { gridcolor: '#334155', showgrid: true, tickprefix: '¥',
+                 tickformat: ',.0f' },
+        margin: { l: 70, r: 30, t: 30, b: 80 },
+        hovermode: 'x unified',
+    };
+
+    Plotly.newPlot('sim-chart', traces, layout, { responsive: true });
+}
+
+// ============================================================
+// リセット
+// ============================================================
+function resetSimulation() {
+    document.getElementById('sim-result-section').classList.add('d-none');
+    document.getElementById('sim-config-section').classList.add('d-none');
+    document.getElementById('screening-results').classList.add('d-none');
+    screeningData  = null;
+    selectedStock  = null;
+}
+</script>
+
+<style>
+.table-row-hover:hover { background: rgba(99,102,241,0.2) !important; }
+.bg-purple { background-color: #7c3aed !important; }
+</style>
+{% endblock scripts %}

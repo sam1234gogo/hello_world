@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}バックテスト結果{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+
+  <!-- ページヘッダー -->
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div class="d-flex align-items-center">
+      <i class="bi bi-bar-chart-line fs-3 text-warning me-3"></i>
+      <div>
+        <h4 class="mb-0 fw-bold">10年バックテスト結果</h4>
+        <small class="text-muted">2015〜2025年 短期・中期・長期 3戦略</small>
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('backtest_short') }}" class="btn btn-info btn-sm">
+        <i class="bi bi-lightning-charge me-1"></i>短期 詳細レポート
+      </a>
+    </div>
+  </div>
+
+  {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+  {% else %}
+
+  <!-- サマリーカード -->
+  <div class="row g-3 mb-4">
+    {% for s in summary %}
+    <div class="col-6 col-md-3">
+      <div class="card border-{{ s.color }} h-100">
+        <div class="card-body p-3">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <span class="badge bg-{{ s.color }} text-dark fw-bold fs-6">{{ s.strategy }}投資</span>
+            <span class="text-muted small">{{ s.count }}件</span>
+          </div>
+          <div class="fs-5 fw-bold {% if s.pnl >= 0 %}text-success{% else %}text-danger{% endif %} mb-1">
+            {% if s.pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(s.pnl / 10000) }}万円
+          </div>
+          <div class="row text-muted small g-0">
+            <div class="col-6">勝率 <span class="text-white fw-semibold">{{ "%.1f"|format(s.win_rate) }}%</span></div>
+            <div class="col-6">ROI <span class="{% if s.roi >= 0 %}text-success{% else %}text-danger{% endif %} fw-semibold">{% if s.roi >= 0 %}+{% endif %}{{ "%.2f"|format(s.roi) }}%</span></div>
+          </div>
+          <div class="text-muted small mt-1">
+            投資額合計 {{ "{:,.0f}".format(s.investment / 100000000) }}億{{ "{:,.0f}".format((s.investment % 100000000) / 10000) }}万
+          </div>
+          {% if s.strategy == '短期' %}
+          <div class="mt-2">
+            <a href="{{ url_for('backtest_short') }}" class="btn btn-outline-info btn-sm w-100" style="font-size:0.75rem;">
+              <i class="bi bi-arrow-right me-1"></i>詳細レポートを見る
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    <!-- 合計カード -->
+    <div class="col-6 col-md-3">
+      <div class="card border-light bg-secondary bg-opacity-25 h-100">
+        <div class="card-body p-3">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <span class="badge bg-light text-dark fw-bold fs-6">合計</span>
+            <span class="text-muted small">{{ "{:,}".format(total_count) }}件</span>
+          </div>
+          <div class="fs-5 fw-bold text-success mb-1">
+            +{{ "{:,.0f}".format(total_pnl / 10000) }}万円
+          </div>
+          <div class="row text-muted small g-0">
+            <div class="col-6">勝率 <span class="text-white fw-semibold">{{ "%.1f"|format(total_wins / total_count * 100) }}%</span></div>
+            <div class="col-6">ROI <span class="text-success fw-semibold">+{{ "%.2f"|format(total_pnl / total_inv * 100) }}%</span></div>
+          </div>
+          <div class="text-muted small mt-1">
+            投資額 {{ "{:,.0f}".format(total_inv / 100000000) }}億{{ "{:,.0f}".format((total_inv % 100000000) / 10000) }}万
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 累積損益チャート -->
+  <div class="card mb-4">
+    <div class="card-header py-2">
+      <i class="bi bi-graph-up me-2 text-warning"></i>累積損益推移（万円）
+    </div>
+    <div class="card-body p-2">
+      <div id="chart-cumulative" style="height:260px;"></div>
+    </div>
+  </div>
+
+  <!-- 年度別テーブル -->
+  <div class="card">
+    <div class="card-header py-2 d-flex align-items-center justify-content-between">
+      <span><i class="bi bi-table me-2 text-warning"></i>年度別成績</span>
+      <small class="text-muted">投資額 = 取得単価 × 100株 × (1＋ナンピン回数)</small>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover table-bordered mb-0 align-middle text-center" style="font-size:0.82rem;">
+          <thead class="table-dark">
+            <tr>
+              <th class="text-start ps-3" style="width:50px">年</th>
+              <th style="width:52px">戦略</th>
+              <th style="width:46px">件数</th>
+              <th style="width:60px">勝率</th>
+              <th style="width:130px">投資額合計</th>
+              <th style="width:130px">損益合計</th>
+              <th style="width:62px">ROI</th>
+              <th style="width:48px">利確</th>
+              <th style="width:38px">LC</th>
+              <th style="width:58px">移行/<wbr>期終</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              {%- set ns = namespace(first=true) -%}
+              {% for s in row.strategies %}
+                {% if s is not none %}
+                <tr class="{% if row.total_pnl < 0 %}table-danger bg-opacity-10{% endif %}">
+                  {% if ns.first %}
+                  <td class="text-start ps-3 fw-bold align-middle text-{{ 'danger' if row.total_pnl < 0 else 'white' }}"
+                      rowspan="{{ row.strategies | selectattr('!=', 'none') | list | length }}">
+                    {{ row.year }}
+                  </td>
+                  {%- set ns.first = false -%}
+                  {% endif %}
+                  <td><span class="badge bg-{{ s.color }} text-dark">{{ s.strategy }}</span></td>
+                  <td>{{ s.count }}</td>
+                  <td>
+                    <span class="{% if s.win_rate >= 80 %}text-success fw-bold{% elif s.win_rate >= 60 %}text-warning{% else %}text-danger{% endif %}">
+                      {{ "%.0f"|format(s.win_rate) }}%
+                    </span>
+                  </td>
+                  <td class="text-muted">{{ "{:,.0f}".format(s.investment / 10000) }}万</td>
+                  <td class="fw-semibold {% if s.pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if s.pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(s.pnl / 10000) }}万
+                  </td>
+                  <td class="{% if s.roi >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if s.roi >= 0 %}+{% endif %}{{ "%.1f"|format(s.roi) }}%
+                  </td>
+                  <td class="text-muted">{{ s.profit_cnt }}</td>
+                  <td class="{% if s.lc > 0 %}text-warning{% else %}text-muted{% endif %}">{{ s.lc }}</td>
+                  <td class="text-muted">{{ s.transfer }}</td>
+                </tr>
+                {% endif %}
+              {% endfor %}
+              <!-- 年合計行 -->
+              <tr class="table-secondary fw-semibold {% if row.total_pnl < 0 %}table-danger{% endif %}" style="font-size:0.80rem;">
+                <td></td>
+                <td colspan="3" class="text-start ps-2 text-muted">{{ row.year }}年 合計</td>
+                <td class="text-muted">{{ "{:,.0f}".format(row.total_inv / 10000) }}万</td>
+                <td class="{% if row.total_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                  {% if row.total_pnl >= 0 %}+{% endif %}{{ "{:,.0f}".format(row.total_pnl / 10000) }}万
+                </td>
+                <td class="{% if row.total_roi >= 0 %}text-success{% else %}text-danger{% endif %}">
+                  {% if row.total_roi >= 0 %}+{% endif %}{{ "%.1f"|format(row.total_roi) }}%
+                </td>
+                <td colspan="3"></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <!-- フッター合計 -->
+          <tfoot class="table-dark fw-bold">
+            <tr>
+              <td class="text-start ps-3" colspan="2">10年合計</td>
+              <td>{{ "{:,}".format(total_count) }}</td>
+              <td>{{ "%.1f"|format(total_wins / total_count * 100) }}%</td>
+              <td>{{ "{:,.0f}".format(total_inv / 10000) }}万</td>
+              <td class="text-success">+{{ "{:,.0f}".format(total_pnl / 10000) }}万</td>
+              <td class="text-success">+{{ "%.2f"|format(total_pnl / total_inv * 100) }}%</td>
+              <td colspan="3"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 凡例 -->
+  <div class="mt-2 text-muted small">
+    <span class="badge bg-info text-dark me-1">短期</span>スクリーニング月から90日以内の売買
+    <span class="badge bg-warning text-dark mx-1">中期</span>PBRシグナルからの+20%利確（最長2年）
+    <span class="badge bg-success text-dark mx-1">長期</span>配当利回りシグナルからの+40%利確（最長3年）
+    <span class="ms-3">LC＝ロスカット　移行＝中期/長期移行または期間終了</span>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const years = {{ chart_years | tojson }};
+  const data  = {{ chart_data  | tojson }};
+  const colors = { '短期': '#0dcaf0', '中期': '#ffc107', '長期': '#198754' };
+  const traces = Object.entries(data).map(([st, vals]) => ({
+    x: years, y: vals,
+    type: 'scatter', mode: 'lines+markers',
+    name: st + '投資',
+    line: { color: colors[st], width: 2 },
+    marker: { size: 5 },
+    hovertemplate: '%{x}年<br>' + st + '累積: <b>%{y:.0f}万円</b><extra></extra>',
+  }));
+
+  // also add combined line
+  const combined = years.map((_, i) => Object.values(data).reduce((sum, v) => sum + v[i], 0));
+  traces.push({
+    x: years, y: combined,
+    type: 'scatter', mode: 'lines+markers',
+    name: '合計',
+    line: { color: '#ffffff', width: 2.5, dash: 'dot' },
+    marker: { size: 6 },
+    hovertemplate: '%{x}年<br>合計累積: <b>%{y:.0f}万円</b><extra></extra>',
+  });
+
+  Plotly.newPlot('chart-cumulative', traces, {
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor:  'rgba(0,0,0,0)',
+    font: { color: '#ccc', size: 11 },
+    margin: { t: 10, b: 40, l: 60, r: 20 },
+    xaxis: { gridcolor: '#333', tickangle: -30 },
+    yaxis: { gridcolor: '#333', ticksuffix: '万' },
+    legend: { orientation: 'h', y: -0.25, x: 0.5, xanchor: 'center' },
+    hovermode: 'x unified',
+  }, { responsive: true, displayModeBar: false });
+})();
+</script>
+{% endblock %}

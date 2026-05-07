@@ -1,0 +1,583 @@
+{% extends "base.html" %}
+{% block title %}ポートフォリオ - 株式投資アシスタント{% endblock %}
+
+{% block content %}
+<div class="portfolio-page">
+    <!-- ページヘッダー -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">
+            <i class="bi bi-briefcase me-2 text-info"></i>ポートフォリオ管理
+        </h2>
+        <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#addPortfolioModal">
+            <i class="bi bi-plus-circle me-1"></i>銘柄を登録
+        </button>
+    </div>
+
+    <!-- ========================================================
+         セクション1: アラート（最優先表示）
+         ======================================================== -->
+    {% if alerts %}
+        <section class="mb-4" id="alerts-section">
+            <h4 class="text-danger fw-bold mb-3">
+                <i class="bi bi-bell-fill me-2 text-danger"></i>
+                アラート
+                <span class="badge bg-danger ms-2">{{ alerts|length }}</span>
+            </h4>
+            {% for alert in alerts %}
+                <div class="alert alert-{{ alert.level }} alert-dismissible fade show alert-card" role="alert">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="fw-bold mb-1">
+                                {% if alert.level == 'danger' %}
+                                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                {% elif alert.level == 'warning' %}
+                                    <i class="bi bi-exclamation-circle-fill me-2"></i>
+                                {% elif alert.level == 'success' %}
+                                    <i class="bi bi-check-circle-fill me-2"></i>
+                                {% else %}
+                                    <i class="bi bi-info-circle-fill me-2"></i>
+                                {% endif %}
+                                {{ alert.message }}
+                            </div>
+                            {% if alert.pnl_rate is not none %}
+                                <small>
+                                    損益率:
+                                    <span class="fw-bold {% if alert.pnl_rate >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                        {{ '%+.2f' % alert.pnl_rate }}%
+                                    </span>
+                                </small>
+                            {% endif %}
+                        </div>
+                        <div class="ms-3 d-flex flex-column gap-1">
+                            {% if alert.type == 'nanpin' %}
+                                <button class="btn btn-warning btn-sm"
+                                        onclick="openNanpinModal({{ alert.entry_id }})">
+                                    <i class="bi bi-plus-circle me-1"></i>ナンピン記録
+                                </button>
+                            {% elif alert.type in ['sell_target', 'loss_cut', 'period_expired'] %}
+                                <button class="btn btn-danger btn-sm"
+                                        onclick="openSellModal({{ alert.entry_id }}, {{ alert.current_price or 0 }})">
+                                    <i class="bi bi-cash-coin me-1"></i>売却記録
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        </section>
+    {% endif %}
+
+    <!-- ========================================================
+         セクション2: 保有株一覧
+         ======================================================== -->
+    <section class="mb-5" id="holdings-section">
+        <h4 class="text-info fw-bold mb-3">
+            <i class="bi bi-list-ul me-2"></i>保有株一覧
+            <span class="badge bg-info text-dark ms-2">{{ portfolio|length }}銘柄</span>
+        </h4>
+
+        {% if portfolio %}
+            <div class="table-responsive">
+                <table class="table table-dark table-hover border border-secondary">
+                    <thead class="table-secondary text-dark">
+                        <tr>
+                            <th>銘柄</th>
+                            <th class="text-center">投資種別</th>
+                            <th class="text-end">購入日</th>
+                            <th class="text-end">購入単価</th>
+                            <th class="text-end">平均単価</th>
+                            <th class="text-end">株数</th>
+                            <th class="text-end">現在価格</th>
+                            <th class="text-end">損益</th>
+                            <th class="text-end">損益率</th>
+                            <th class="text-end">売り目標</th>
+                            <th class="text-center">期限</th>
+                            <th class="text-center">状態</th>
+                            <th class="text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in portfolio %}
+                        <tr class="{% if entry.pnl_rate and entry.pnl_rate >= 9 %}table-success
+                                    {% elif entry.pnl_rate and entry.pnl_rate <= -20 %}table-danger
+                                    {% elif entry.pnl_rate and entry.pnl_rate <= -10 %}table-warning
+                                    {% endif %}">
+                            <td>
+                                <div class="fw-bold">
+                                    {% if entry.category == '安心割安株' %}
+                                        <i class="bi bi-star-fill text-warning me-1"></i>
+                                    {% endif %}
+                                    {{ entry.stock_name }}
+                                </div>
+                                <small class="text-muted">{{ entry.ticker }}</small>
+                                {% if entry.category %}
+                                    <br>
+                                    <span class="badge {% if entry.category == '安心割安株' %}bg-warning text-dark
+                                                        {% elif entry.category == '成長株' %}bg-success
+                                                        {% else %}bg-info text-dark{% endif %}">
+                                        {{ entry.category }}
+                                    </span>
+                                {% endif %}
+                                {% if entry.nanpin_count > 0 %}
+                                    <span class="badge bg-warning text-dark ms-1">
+                                        ナンピン×{{ entry.nanpin_count }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge {% if entry.investment_type == 'short' %}bg-primary
+                                                    {% elif entry.investment_type == 'medium' %}bg-success
+                                                    {% else %}bg-purple{% endif %}">
+                                    {% if entry.investment_type == 'short' %}短期
+                                    {% elif entry.investment_type == 'medium' %}中期
+                                    {% else %}長期{% endif %}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <small>{{ entry.purchase_date }}</small>
+                            </td>
+                            <td class="text-end">
+                                ¥{{ '{:,.0f}'.format(entry.purchase_price) }}
+                            </td>
+                            <td class="text-end">
+                                {% if entry.avg_price %}
+                                    ¥{{ '{:,.0f}'.format(entry.avg_price) }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {{ entry.total_shares or entry.shares }}株
+                            </td>
+                            <td class="text-end fw-bold">
+                                {% if entry.current_price %}
+                                    ¥{{ '{:,.0f}'.format(entry.current_price) }}
+                                {% else %}
+                                    <span class="text-muted">取得中...</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end fw-bold">
+                                {% if entry.pnl is not none %}
+                                    <span class="{% if entry.pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                        {% if entry.pnl >= 0 %}+{% endif %}{{ '{:,.0f}'.format(entry.pnl|int) }}円
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end fw-bold">
+                                {% if entry.pnl_rate is not none %}
+                                    <span class="badge {% if entry.pnl_rate >= 9 %}bg-success
+                                                        {% elif entry.pnl_rate >= 0 %}bg-info text-dark
+                                                        {% elif entry.pnl_rate >= -10 %}bg-warning text-dark
+                                                        {% else %}bg-danger{% endif %}">
+                                        {{ '%+.2f' % entry.pnl_rate }}%
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if entry.sell_targets %}
+                                    <div class="text-success small">
+                                        ¥{{ '{:,.0f}'.format(entry.sell_targets.profit_target) }}
+                                    </div>
+                                    <div class="text-danger small">
+                                        LC: ¥{{ '{:,.0f}'.format(entry.sell_targets.loss_cut) }}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if entry.days_to_deadline is not none %}
+                                    <span class="badge {% if entry.days_to_deadline <= 0 %}bg-danger
+                                                        {% elif entry.days_to_deadline <= 7 %}bg-warning text-dark
+                                                        {% elif entry.days_to_deadline <= 14 %}bg-info text-dark
+                                                        {% else %}bg-secondary{% endif %}">
+                                        {% if entry.days_to_deadline <= 0 %}
+                                            期限切れ
+                                        {% else %}
+                                            残{{ entry.days_to_deadline }}日
+                                        {% endif %}
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-primary">保有中</span>
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-warning" title="ナンピン記録"
+                                            onclick="openNanpinModal({{ entry.id }}, {{ entry.current_price or 0 }})">
+                                        <i class="bi bi-arrow-down-circle"></i>
+                                    </button>
+                                    <button class="btn btn-success" title="売却記録"
+                                            onclick="openSellModal({{ entry.id }}, {{ entry.current_price or 0 }})">
+                                        <i class="bi bi-cash-coin"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-secondary">
+                <i class="bi bi-info-circle me-2"></i>
+                保有株はありません。「銘柄を登録」ボタンから追加してください。
+            </div>
+        {% endif %}
+    </section>
+
+    <!-- ========================================================
+         セクション3: 売却済み銘柄（最近10件）
+         ======================================================== -->
+    {% if sold_portfolio %}
+        <section class="mb-5" id="sold-section">
+            <h4 class="text-muted fw-bold mb-3">
+                <i class="bi bi-archive me-2"></i>売却済み（直近10件）
+            </h4>
+            <div class="table-responsive">
+                <table class="table table-dark table-sm border border-secondary opacity-75">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>銘柄</th>
+                            <th class="text-end">購入価格</th>
+                            <th class="text-end">売却価格</th>
+                            <th class="text-end">株数</th>
+                            <th class="text-end">損益</th>
+                            <th class="text-end">損益率</th>
+                            <th class="text-end">購入日</th>
+                            <th class="text-end">売却日</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in sold_portfolio %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ entry.stock_name }}</div>
+                                <small class="text-muted">{{ entry.ticker }}</small>
+                            </td>
+                            <td class="text-end">¥{{ '{:,.0f}'.format(entry.purchase_price) }}</td>
+                            <td class="text-end">
+                                {% if entry.sell_price %}
+                                    ¥{{ '{:,.0f}'.format(entry.sell_price) }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ entry.shares }}株</td>
+                            <td class="text-end fw-bold">
+                                {% if entry.sell_price %}
+                                    {% set profit = (entry.sell_price - entry.purchase_price) * entry.shares %}
+                                    <span class="{% if profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                        {{ '%+,.0f' % profit }}円
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if entry.sell_price %}
+                                    {% set rate = (entry.sell_price - entry.purchase_price) / entry.purchase_price * 100 %}
+                                    <span class="badge {% if rate >= 0 %}bg-success{% else %}bg-danger{% endif %}">
+                                        {{ '%+.2f' % rate }}%
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end"><small>{{ entry.purchase_date }}</small></td>
+                            <td class="text-end"><small>{{ entry.sell_date or '-' }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    {% endif %}
+</div>
+
+<!-- ========================================================
+     銘柄登録モーダル
+     ======================================================== -->
+<div class="modal fade" id="addPortfolioModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark border border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-info">
+                    <i class="bi bi-plus-circle me-2"></i>銘柄登録
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('portfolio_add') }}" method="POST" id="addPortfolioForm">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">銘柄コード <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control bg-dark text-white border-secondary"
+                                       name="ticker" id="modal-ticker"
+                                       placeholder="例: 7203" required
+                                       oninput="fetchStockInfo(this.value)">
+                                <button class="btn btn-outline-info" type="button"
+                                        onclick="fetchStockInfo(document.getElementById('modal-ticker').value)">
+                                    <i class="bi bi-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">銘柄名 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control bg-dark text-white border-secondary"
+                                   name="stock_name" id="modal-stock-name"
+                                   placeholder="例: トヨタ自動車">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">投資種別 <span class="text-danger">*</span></label>
+                            <select class="form-select bg-dark text-white border-secondary"
+                                    name="investment_type" id="modal-investment-type" required>
+                                <option value="short">短期</option>
+                                <option value="medium">中期</option>
+                                <option value="long">長期</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">区分</label>
+                            <select class="form-select bg-dark text-white border-secondary"
+                                    name="category" id="modal-category">
+                                <option value="安心割安株">安心割安株</option>
+                                <option value="通常割安株">通常割安株</option>
+                                <option value="成長株">成長株</option>
+                                <option value="その他">その他</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">購入日 <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control bg-dark text-white border-secondary"
+                                   name="purchase_date" id="modal-purchase-date" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">購入単価 (円) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control bg-dark text-white border-secondary"
+                                   name="purchase_price" id="modal-price"
+                                   step="0.01" min="1" placeholder="0" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">株数 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control bg-dark text-white border-secondary"
+                                   name="shares" id="modal-shares"
+                                   min="1" value="100" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">メモ・備考</label>
+                        <textarea class="form-control bg-dark text-white border-secondary"
+                                  name="notes" rows="2"
+                                  placeholder="購入理由、特記事項など"></textarea>
+                    </div>
+                    <!-- 現在の株価情報プレビュー -->
+                    <div id="stock-info-preview" class="card bg-secondary border-0 d-none">
+                        <div class="card-body py-2">
+                            <div class="row small">
+                                <div class="col-3">
+                                    現在価格: <span id="preview-price" class="fw-bold text-info">-</span>
+                                </div>
+                                <div class="col-3">
+                                    PBR: <span id="preview-pbr">-</span>
+                                </div>
+                                <div class="col-3">
+                                    PER: <span id="preview-per">-</span>
+                                </div>
+                                <div class="col-3">
+                                    配当: <span id="preview-div">-</span>%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary"
+                            data-bs-dismiss="modal">キャンセル</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-plus-circle me-1"></i>ポートフォリオに追加
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================
+     ナンピン記録モーダル
+     ======================================================== -->
+<div class="modal fade" id="nanpinModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border border-warning">
+            <div class="modal-header border-warning">
+                <h5 class="modal-title text-warning">
+                    <i class="bi bi-arrow-down-circle me-2"></i>ナンピン記録
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('portfolio_nanpin') }}" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="entry_id" id="nanpin-entry-id">
+                    <div class="mb-3">
+                        <label class="form-label">ナンピン日 <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control bg-dark text-white border-secondary"
+                               name="nanpin_date" id="nanpin-date" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">購入価格 (円) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control bg-dark text-white border-secondary"
+                                   name="nanpin_price" id="nanpin-price"
+                                   step="0.01" min="1" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">購入株数 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control bg-dark text-white border-secondary"
+                                   name="nanpin_shares" id="nanpin-shares"
+                                   min="1" value="100" required>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <small>ナンピンを記録すると平均購入価格が再計算されます。</small>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary"
+                            data-bs-dismiss="modal">キャンセル</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-arrow-down-circle me-1"></i>ナンピン記録する
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================
+     売却記録モーダル
+     ======================================================== -->
+<div class="modal fade" id="sellModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border border-success">
+            <div class="modal-header border-success">
+                <h5 class="modal-title text-success">
+                    <i class="bi bi-cash-coin me-2"></i>売却記録
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('portfolio_sell') }}" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="entry_id" id="sell-entry-id">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">売却日 <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control bg-dark text-white border-secondary"
+                                   name="sell_date" id="sell-date" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">売却価格 (円) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control bg-dark text-white border-secondary"
+                                   name="sell_price" id="sell-price"
+                                   step="0.01" min="1" required>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <small>売却を記録すると保有状態が「売却済み」に変わります。</small>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary"
+                            data-bs-dismiss="modal">キャンセル</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-cash-coin me-1"></i>売却記録する
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 今日の日付をデフォルトとして設定
+    document.addEventListener('DOMContentLoaded', function() {
+        const today = new Date().toISOString().split('T')[0];
+        const dateFields = ['modal-purchase-date', 'nanpin-date', 'sell-date'];
+        dateFields.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = today;
+        });
+    });
+
+    // ナンピンモーダルを開く
+    function openNanpinModal(entryId, currentPrice) {
+        document.getElementById('nanpin-entry-id').value = entryId;
+        if (currentPrice) {
+            document.getElementById('nanpin-price').value = currentPrice;
+        }
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('nanpin-date').value = today;
+        const modal = new bootstrap.Modal(document.getElementById('nanpinModal'));
+        modal.show();
+    }
+
+    // 売却モーダルを開く
+    function openSellModal(entryId, currentPrice) {
+        document.getElementById('sell-entry-id').value = entryId;
+        if (currentPrice) {
+            document.getElementById('sell-price').value = currentPrice;
+        }
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('sell-date').value = today;
+        const modal = new bootstrap.Modal(document.getElementById('sellModal'));
+        modal.show();
+    }
+
+    // 銘柄情報を取得してプレビュー表示
+    async function fetchStockInfo(ticker) {
+        if (!ticker || ticker.length < 4) return;
+        try {
+            const response = await fetch(`/api/stock_info/${ticker}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'success' && data.data) {
+                    const info = data.data;
+                    // 銘柄名を自動入力
+                    if (info.stock_name) {
+                        document.getElementById('modal-stock-name').value = info.stock_name;
+                    }
+                    // プレビュー表示
+                    document.getElementById('preview-price').textContent =
+                        info.current_price ? `¥${info.current_price.toLocaleString()}` : 'N/A';
+                    document.getElementById('preview-pbr').textContent =
+                        info.pbr ? info.pbr.toFixed(2) + '倍' : 'N/A';
+                    document.getElementById('preview-per').textContent =
+                        info.per ? info.per.toFixed(1) + '倍' : 'N/A';
+                    document.getElementById('preview-div').textContent =
+                        info.dividend_yield ? info.dividend_yield.toFixed(2) : 'N/A';
+                    // 現在価格を購入単価にセット
+                    if (info.current_price) {
+                        document.getElementById('modal-price').value = info.current_price;
+                    }
+                    document.getElementById('stock-info-preview').classList.remove('d-none');
+                }
+            }
+        } catch (e) {
+            console.error('株価情報取得エラー:', e);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,468 @@
+/**
+ * style.css - 株式投資アシスタント カスタムスタイルシート
+ * ダークテーマ対応のカスタムデザイン
+ */
+
+/* =============================================================================
+   カラー変数
+   ============================================================================= */
+:root {
+    --color-buy: #28a745;          /* 買いシグナル: 緑 */
+    --color-sell: #dc3545;         /* 売りシグナル: 赤 */
+    --color-nanpin: #ffc107;       /* ナンピン: 黄 */
+    --color-anshin: #ffd700;       /* 安心割安株: ゴールド */
+    --color-medium: #20c997;       /* 中期: ティール */
+    --color-long: #6f42c1;         /* 長期: 紫 */
+    --color-warning-bg: rgba(255, 193, 7, 0.15);
+    --color-success-bg: rgba(40, 167, 69, 0.15);
+    --color-danger-bg: rgba(220, 53, 69, 0.15);
+    --glow-gold: 0 0 10px rgba(255, 215, 0, 0.6), 0 0 20px rgba(255, 215, 0, 0.3);
+    --glow-green: 0 0 10px rgba(40, 167, 69, 0.6), 0 0 20px rgba(40, 167, 69, 0.3);
+}
+
+/* =============================================================================
+   基本レイアウト
+   ============================================================================= */
+body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', 'Yu Gothic', sans-serif;
+    min-height: 100vh;
+}
+
+/* メインコンテンツのパディング */
+main.container-fluid {
+    padding-bottom: 60px;
+}
+
+/* =============================================================================
+   安心割安株 - 特別スタイル（Glow効果）
+   ============================================================================= */
+/* 安心割安株セクションのヘッダー */
+.section-header-anshin {
+    background: linear-gradient(
+        135deg,
+        rgba(255, 215, 0, 0.15) 0%,
+        rgba(255, 193, 7, 0.08) 50%,
+        rgba(255, 215, 0, 0.15) 100%
+    );
+    border: 1px solid rgba(255, 215, 0, 0.4) !important;
+    box-shadow: var(--glow-gold);
+    animation: pulse-gold 3s ease-in-out infinite;
+}
+
+/* ゴールドの点滅アニメーション */
+@keyframes pulse-gold {
+    0%, 100% {
+        box-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.7), 0 0 40px rgba(255, 215, 0, 0.3);
+    }
+}
+
+/* 安心割安株テーブル */
+.anshin-table {
+    border-color: rgba(255, 215, 0, 0.5) !important;
+}
+
+/* 安心割安株の行スタイル */
+.anshin-row {
+    background: linear-gradient(
+        90deg,
+        rgba(255, 215, 0, 0.08) 0%,
+        transparent 100%
+    ) !important;
+    border-left: 3px solid var(--color-anshin) !important;
+}
+
+.anshin-row:hover {
+    background: linear-gradient(
+        90deg,
+        rgba(255, 215, 0, 0.15) 0%,
+        rgba(255, 215, 0, 0.05) 100%
+    ) !important;
+}
+
+/* 安心割安株の銘柄名 */
+.anshin-row td:first-child {
+    padding-left: 1rem;
+}
+
+/* =============================================================================
+   スコアバッジ
+   ============================================================================= */
+.score-badge {
+    font-size: 1rem !important;
+    min-width: 60px;
+    display: inline-block;
+}
+
+/* スコア詳細の小さいバッジ */
+.score-details-small .badge {
+    font-size: 0.7rem;
+    padding: 3px 6px;
+}
+
+/* =============================================================================
+   アラートカード
+   ============================================================================= */
+.alert-card {
+    border-left-width: 5px !important;
+    transition: transform 0.2s ease;
+}
+
+.alert-card:hover {
+    transform: translateX(2px);
+}
+
+/* ロスカットアラート（最優先・最強調） */
+.alert-danger.alert-card {
+    border-left-color: #dc3545 !important;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+}
+
+/* 売り時アラート */
+.alert-success.alert-card {
+    border-left-color: #28a745 !important;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+/* ナンピンアラート */
+.alert-warning.alert-card {
+    border-left-color: #ffc107 !important;
+    box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
+}
+
+/* =============================================================================
+   点滅バッジ（EPS上方修正シグナル）
+   ============================================================================= */
+.blink-badge {
+    animation: blink-green 1.5s ease-in-out infinite;
+}
+
+@keyframes blink-green {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* =============================================================================
+   ナンピン水準の表示
+   ============================================================================= */
+.nanpin-level .badge {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+}
+
+/* =============================================================================
+   テーブルスタイル（レスポンシブ対応）
+   ============================================================================= */
+/* テーブルヘッダー */
+.table thead th {
+    font-size: 0.85rem;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+/* テーブルセルの最小幅設定 */
+.table td, .table th {
+    vertical-align: middle;
+    font-size: 0.9rem;
+}
+
+/* レスポンシブテーブルのスクロールバースタイル */
+.table-responsive::-webkit-scrollbar {
+    height: 6px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #343a40;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #6c757d;
+    border-radius: 3px;
+}
+
+/* =============================================================================
+   紫カラー（長期投資）
+   ============================================================================= */
+.text-purple {
+    color: #a855f7 !important;
+}
+
+.bg-purple {
+    background-color: #6f42c1 !important;
+}
+
+.border-purple {
+    border-color: rgba(111, 66, 193, 0.5) !important;
+}
+
+/* =============================================================================
+   カードスタイル
+   ============================================================================= */
+.card {
+    transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* KPIカード（シミュレーション結果） */
+#kpi-cards .card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#kpi-cards .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* =============================================================================
+   ナビゲーションバー
+   ============================================================================= */
+.navbar-brand {
+    font-size: 1.1rem;
+}
+
+.nav-link {
+    font-size: 0.9rem;
+    transition: color 0.15s ease;
+}
+
+.nav-link.active {
+    font-weight: bold;
+}
+
+/* =============================================================================
+   フッター
+   ============================================================================= */
+.footer {
+    font-size: 0.8rem;
+}
+
+/* =============================================================================
+   フラッシュメッセージ
+   ============================================================================= */
+.flash-messages .alert {
+    animation: slideInDown 0.3s ease;
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* =============================================================================
+   ポートフォリオ画面
+   ============================================================================= */
+/* 損益のプラス/マイナス表示 */
+.pnl-positive {
+    color: var(--color-buy);
+    font-weight: bold;
+}
+
+.pnl-negative {
+    color: var(--color-sell);
+    font-weight: bold;
+}
+
+/* ポートフォリオテーブルの行ハイライト */
+.table-success.bg-opacity-10 {
+    background-color: rgba(40, 167, 69, 0.08) !important;
+}
+
+.table-danger.bg-opacity-10 {
+    background-color: rgba(220, 53, 69, 0.08) !important;
+}
+
+/* =============================================================================
+   モーダルダイアログ
+   ============================================================================= */
+.modal-content {
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+/* =============================================================================
+   フォームコントロール（ダーク対応）
+   ============================================================================= */
+.form-control.bg-dark,
+.form-select.bg-dark {
+    color: #dee2e6;
+}
+
+.form-control.bg-dark::placeholder {
+    color: #6c757d;
+}
+
+.form-control.bg-dark:focus,
+.form-select.bg-dark:focus {
+    background-color: #1a1e21 !important;
+    border-color: #86b7fe;
+    color: #dee2e6;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* =============================================================================
+   ローディングアニメーション
+   ============================================================================= */
+.spinner-border {
+    animation-duration: 0.8s;
+}
+
+/* =============================================================================
+   レスポンシブ調整
+   ============================================================================= */
+@media (max-width: 768px) {
+    /* モバイルでの文字サイズ調整 */
+    .table td, .table th {
+        font-size: 0.75rem;
+    }
+
+    .score-details-small .badge {
+        font-size: 0.6rem;
+    }
+
+    /* モバイルでのKPIカード調整 */
+    #kpi-cards .fs-4 {
+        font-size: 1.2rem !important;
+    }
+
+    /* ナビゲーションの調整 */
+    .navbar-brand {
+        font-size: 0.95rem;
+    }
+}
+
+@media (max-width: 576px) {
+    /* 超小画面での調整 */
+    main.container-fluid {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    .section-header-anshin h3 {
+        font-size: 1.1rem;
+    }
+}
+
+/* =============================================================================
+   プリントスタイル
+   ============================================================================= */
+@media print {
+    .navbar, .footer, .btn, .modal {
+        display: none !important;
+    }
+
+    .table {
+        color: #000 !important;
+        background: #fff !important;
+    }
+
+    .badge {
+        border: 1px solid #000;
+        color: #000 !important;
+        background: none !important;
+    }
+}
+
+/* =============================================================================
+   スクロールバーのカスタマイズ（全体）
+   ============================================================================= */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1a1e21;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #495057;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #6c757d;
+}
+
+/* =============================================================================
+   Plotlyグラフのダーク対応
+   ============================================================================= */
+.js-plotly-plot .plotly .modebar {
+    background: rgba(33, 37, 41, 0.9) !important;
+}
+
+.js-plotly-plot .plotly .modebar-btn path {
+    fill: #adb5bd !important;
+}
+
+/* =============================================================================
+   シミュレーション画面
+   ============================================================================= */
+#equity-chart {
+    background: #1a1e21;
+    border-radius: 4px;
+}
+
+/* トレード一覧のWIN/LOSSアイコン */
+#trades-body .badge {
+    min-width: 50px;
+    text-align: center;
+}
+
+/* =============================================================================
+   設定画面
+   ============================================================================= */
+/* スコアリングテーブル */
+.settings-page .table-bordered td,
+.settings-page .table-bordered th {
+    font-size: 0.8rem;
+}
+
+/* =============================================================================
+   アニメーション
+   ============================================================================= */
+/* ページ読み込みアニメーション */
+.dashboard-page section {
+    animation: fadeInUp 0.4s ease forwards;
+    opacity: 0;
+}
+
+.dashboard-page section:nth-child(1) { animation-delay: 0.05s; }
+.dashboard-page section:nth-child(2) { animation-delay: 0.15s; }
+.dashboard-page section:nth-child(3) { animation-delay: 0.25s; }
+.dashboard-page section:nth-child(4) { animation-delay: 0.35s; }
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ボタンのホバーエフェクト */
+.btn {
+    transition: all 0.15s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn:active {
+    transform: translateY(0);
+}

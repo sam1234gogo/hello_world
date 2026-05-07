@@ -1,0 +1,580 @@
+{% extends "base.html" %}
+{% block title %}設定 - 株式投資アシスタント{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <!-- ページヘッダー -->
+    <div class="mb-4">
+        <h2 class="mb-1">
+            <i class="bi bi-gear me-2 text-info"></i>設定
+        </h2>
+        <p class="text-muted small">アプリの動作設定と銘柄ごとの手動設定を管理します。</p>
+    </div>
+
+    <form action="{{ url_for('settings_update') }}" method="POST" id="settings-form">
+        <div class="row">
+            <!-- 基本設定 -->
+            <div class="col-lg-6 mb-4">
+                <div class="card bg-dark border border-secondary">
+                    <div class="card-header border-secondary">
+                        <h5 class="mb-0 text-info">
+                            <i class="bi bi-sliders me-2"></i>基本設定
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- 日経平均PBR -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">
+                                日経平均PBR
+                                <span class="badge bg-warning text-dark ms-1">重要</span>
+                            </label>
+                            <div class="input-group">
+                                <input type="number" class="form-control bg-dark text-white border-secondary"
+                                       name="nikkei_pbr" id="nikkei-pbr"
+                                       value="{{ settings.nikkei_pbr }}"
+                                       step="0.01" min="0.5" max="5.0">
+                                <span class="input-group-text bg-dark text-white border-secondary">倍</span>
+                            </div>
+                            <small class="text-muted">
+                                中期投資の買い判断に使用します。
+                                <a href="https://www.jpx.co.jp/markets/statistics-equities/market-value/index.html"
+                                   target="_blank" class="text-info">
+                                    <i class="bi bi-box-arrow-up-right me-1"></i>JPX統計情報
+                                </a>
+                            </small>
+                        </div>
+
+                        <!-- 目標配当利回り範囲 -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">目標配当利回り範囲</label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">最小 (%)</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="target_yield_min" id="target-yield-min"
+                                               value="{{ settings.target_yield_min }}"
+                                               step="0.1" min="0.5" max="10.0">
+                                        <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">最大 (%)</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="target_yield_max" id="target-yield-max"
+                                               value="{{ settings.target_yield_max }}"
+                                               step="0.1" min="0.5" max="10.0">
+                                        <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <small class="text-muted">長期投資の買い目標株価計算に使用します。</small>
+                        </div>
+
+                        <!-- スクリーニング対象 -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">スクリーニング対象銘柄</label>
+                            <select class="form-select bg-dark text-white border-secondary"
+                                    name="screening_target" id="screening-target">
+                                <option value="core30_only"
+                                        {% if settings.screening_target == 'core30_only' %}selected{% endif %}>
+                                    Core30のみ（30銘柄・高速）
+                                </option>
+                                <option value="core30_large70"
+                                        {% if settings.screening_target == 'core30_large70' %}selected{% endif %}>
+                                    Core30 + Large70（70銘柄・推奨）
+                                </option>
+                            </select>
+                            <small class="text-muted">
+                                対象銘柄が多いほどスクリーニングに時間がかかります。
+                            </small>
+                        </div>
+
+                        <!-- データ更新頻度 -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">データ更新頻度</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control bg-dark text-white border-secondary"
+                                       name="update_interval_minutes" id="update-interval"
+                                       value="{{ settings.update_interval_minutes }}"
+                                       min="15" max="1440" step="15">
+                                <span class="input-group-text bg-dark text-white border-secondary">分ごと</span>
+                            </div>
+                            <small class="text-muted">15〜1440分（1日）の範囲で設定してください。</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 投資ロジック解説 -->
+            <div class="col-lg-6 mb-4">
+                <div class="card bg-dark border border-secondary">
+                    <div class="card-header border-secondary">
+                        <h5 class="mb-0 text-warning">
+                            <i class="bi bi-book me-2"></i>投資ロジック設定ガイド
+                        </h5>
+                    </div>
+                    <div class="card-body small text-muted">
+                        <h6 class="text-info">短期投資スコアリング</h6>
+                        <table class="table table-dark table-sm table-bordered mb-3">
+                            <thead class="table-secondary text-dark">
+                                <tr><th>指標</th><th>条件</th><th>点数</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td rowspan="3">PBR</td>
+                                    <td>≤0.5倍</td><td class="text-success">+4</td>
+                                </tr>
+                                <tr><td>≤0.8倍</td><td class="text-success">+2</td></tr>
+                                <tr><td>≥1.0倍</td><td class="text-danger">-3</td></tr>
+                                <tr>
+                                    <td rowspan="3">PER(予想)</td>
+                                    <td>≤10倍</td><td class="text-success">+4</td>
+                                </tr>
+                                <tr><td>≤15倍</td><td class="text-success">+2</td></tr>
+                                <tr><td>≥20倍</td><td class="text-danger">-3</td></tr>
+                                <tr>
+                                    <td rowspan="3">ROE(予想)</td>
+                                    <td>≥16%</td><td class="text-success">+4</td>
+                                </tr>
+                                <tr><td>≥8%</td><td class="text-success">+2</td></tr>
+                                <tr><td>≤2%</td><td class="text-danger">-3</td></tr>
+                                <tr>
+                                    <td rowspan="3">配当利回り</td>
+                                    <td>≥4%</td><td class="text-success">+4</td>
+                                </tr>
+                                <tr><td>≥3%</td><td class="text-success">+2</td></tr>
+                                <tr><td>≤1.5%</td><td class="text-danger">-3</td></tr>
+                                <tr>
+                                    <td rowspan="2">52週安値比</td>
+                                    <td>≤1.2倍</td><td class="text-success">+2</td>
+                                </tr>
+                                <tr><td>≥1.5倍</td><td class="text-danger">-3</td></tr>
+                            </tbody>
+                        </table>
+
+                        <h6 class="text-success">中期投資 買い閾値PBR</h6>
+                        <ul class="mb-3">
+                            <li>国際優良企業（黒字）: 日経PBR × <strong class="text-white">0.6</strong></li>
+                            <li>財務優良企業（黒字）: 日経PBR × <strong class="text-white">0.5</strong></li>
+                            <li>赤字時はさらに半分 (×0.3 / ×0.25)</li>
+                        </ul>
+
+                        <h6 class="text-warning">長期投資 買い目標株価</h6>
+                        <div class="bg-secondary rounded p-2 mb-0">
+                            <code class="text-white">
+                                買い目標 = 年間配当 ÷ 目標利回り(3〜5%)
+                            </code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 短期売買ルール -->
+        <div class="row mt-2">
+            <div class="col-lg-6 mb-4">
+                <div class="card bg-dark border border-secondary">
+                    <div class="card-header border-secondary">
+                        <h5 class="mb-0 text-info">
+                            <i class="bi bi-lightning me-2"></i>短期売買ルール
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">安心割安株 判定条件</label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">PBR上限</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="short_anshin_pbr" value="{{ settings.short_anshin_pbr }}"
+                                               step="0.01" min="0.1" max="5.0">
+                                        <span class="input-group-text bg-dark text-white border-secondary">倍</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">配当利回り下限</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="short_anshin_yield" value="{{ settings.short_anshin_yield }}"
+                                               step="0.1" min="0" max="20">
+                                        <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <small class="text-muted">PBR≤上限 または 配当利回り≥下限 で安心割安株</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">ナンピン水準（下落率 %）</label>
+                            <div class="row g-2">
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">1回目</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="short_nanpin1" value="{{ settings.short_nanpin1 }}"
+                                               step="1" min="1" max="50">
+                                        <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">2回目</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="short_nanpin2" value="{{ settings.short_nanpin2 }}"
+                                               step="1" min="1" max="50">
+                                        <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">3回目</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="short_nanpin3" value="{{ settings.short_nanpin3 }}"
+                                               step="1" min="1" max="50">
+                                        <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">利確・ロスカット</label>
+                            <div class="row g-2">
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">通常利確</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="short_profit_normal" value="{{ settings.short_profit_normal }}"
+                                               step="0.5" min="1" max="100">
+                                        <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">ナンピン後利確</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="short_profit_nanpin" value="{{ settings.short_profit_nanpin }}"
+                                               step="0.5" min="1" max="100">
+                                        <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">ロスカット</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control bg-dark text-white border-secondary"
+                                               name="short_loss_cut" value="{{ settings.short_loss_cut }}"
+                                               step="0.5" min="1" max="100">
+                                        <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-1">
+                            <label class="form-label fw-bold small">保有期間上限</label>
+                            <div class="input-group input-group-sm" style="max-width:160px">
+                                <input type="number" class="form-control bg-dark text-white border-secondary"
+                                       name="short_holding_days" value="{{ settings.short_holding_days }}"
+                                       step="1" min="7" max="365">
+                                <span class="input-group-text bg-dark text-white border-secondary">日</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中期売買ルール & 銘柄フィルタ -->
+            <div class="col-lg-6 mb-4">
+                <!-- 中期売買ルール -->
+                <div class="card bg-dark border border-secondary mb-3">
+                    <div class="card-header border-secondary">
+                        <h5 class="mb-0 text-success">
+                            <i class="bi bi-graph-up me-2"></i>中期売買ルール（PBR係数）
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label small text-muted">国際優良（黒字）</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control bg-dark text-white border-secondary"
+                                           name="mid_intl_black_coeff" value="{{ settings.mid_intl_black_coeff }}"
+                                           step="0.05" min="0.1" max="2.0">
+                                    <span class="input-group-text bg-dark text-white border-secondary">×日経PBR</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">国際優良（赤字）</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control bg-dark text-white border-secondary"
+                                           name="mid_intl_red_coeff" value="{{ settings.mid_intl_red_coeff }}"
+                                           step="0.05" min="0.05" max="2.0">
+                                    <span class="input-group-text bg-dark text-white border-secondary">×日経PBR</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">財務優良（黒字）</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control bg-dark text-white border-secondary"
+                                           name="mid_fin_black_coeff" value="{{ settings.mid_fin_black_coeff }}"
+                                           step="0.05" min="0.1" max="2.0">
+                                    <span class="input-group-text bg-dark text-white border-secondary">×日経PBR</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">財務優良（赤字）</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control bg-dark text-white border-secondary"
+                                           name="mid_fin_red_coeff" value="{{ settings.mid_fin_red_coeff }}"
+                                           step="0.05" min="0.05" max="2.0">
+                                    <span class="input-group-text bg-dark text-white border-secondary">×日経PBR</span>
+                                </div>
+                            </div>
+                        </div>
+                        <small class="text-muted">個別銘柄PBR ≤ 日経PBR × 係数 で買いシグナル</small>
+                    </div>
+                </div>
+
+                <!-- 銘柄フィルタ条件 -->
+                <div class="card bg-dark border border-secondary">
+                    <div class="card-header border-secondary">
+                        <h5 class="mb-0 text-warning">
+                            <i class="bi bi-funnel me-2"></i>銘柄フィルタ条件
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold text-info">国際優良企業</label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">BPS下限（円）</label>
+                                    <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                           name="intl_bps_min" value="{{ settings.intl_bps_min }}"
+                                           step="100" min="0">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small text-muted">自己資本比率下限（%）</label>
+                                    <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                           name="intl_equity_ratio_min" value="{{ settings.intl_equity_ratio_min }}"
+                                           step="1" min="0" max="100">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold text-success">財務優良企業</label>
+                            <div class="row g-2">
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">純資産下限（億円）</label>
+                                    <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                           name="fin_net_assets_min" value="{{ settings.fin_net_assets_min }}"
+                                           step="100" min="0">
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">BPS下限（円）</label>
+                                    <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                           name="fin_bps_min" value="{{ settings.fin_bps_min }}"
+                                           step="100" min="0">
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small text-muted">自己資本比率下限（%）</label>
+                                    <input type="number" class="form-control form-control-sm bg-dark text-white border-secondary"
+                                           name="fin_equity_ratio_min" value="{{ settings.fin_equity_ratio_min }}"
+                                           step="1" min="0" max="100">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label small fw-bold text-warning">EPS上方修正閾値</label>
+                            <div class="input-group input-group-sm" style="max-width:160px">
+                                <input type="number" class="form-control bg-dark text-white border-secondary"
+                                       name="eps_revision_threshold" value="{{ settings.eps_revision_threshold }}"
+                                       step="1" min="0" max="100">
+                                <span class="input-group-text bg-dark text-white border-secondary">%</span>
+                            </div>
+                            <small class="text-muted">前回比この%以上の上方修正でシグナル</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 保存ボタン（基本設定） -->
+        <div class="d-flex justify-content-end mb-5">
+            <button type="submit" class="btn btn-warning btn-lg px-5">
+                <i class="bi bi-save me-2"></i>設定を保存
+            </button>
+        </div>
+
+        <!-- ========================================================
+             銘柄ごとの手動設定
+             ======================================================== -->
+        <div class="card bg-dark border border-secondary mb-4">
+            <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 text-info">
+                    <i class="bi bi-table me-2"></i>銘柄ごとの追加情報（手動設定）
+                </h5>
+                <small class="text-muted">国際優良・長期投資の判断に使用します</small>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info alert-dismissible fade show">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>設定のヒント:</strong>
+                    海外売上高比率30%以上は国際優良企業の条件です。
+                    安定株主率40%以上は長期投資の条件です。
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover table-sm border border-secondary">
+                        <thead class="table-secondary text-dark">
+                            <tr>
+                                <th>銘柄コード</th>
+                                <th>銘柄名</th>
+                                <th>海外売上高比率 (%)</th>
+                                <th>安定株主率 (%)</th>
+                                <th>メモ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- 既存の手動設定 -->
+                            {% for info in manual_info_list %}
+                            <tr>
+                                <td>
+                                    <strong>{{ info.ticker }}</strong>
+                                </td>
+                                <td>
+                                    {% for code, name in all_stocks %}
+                                        {% if code == info.ticker %}{{ name }}{% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td>
+                                    <input type="number"
+                                           class="form-control form-control-sm bg-dark text-white border-secondary"
+                                           name="overseas_ratio_{{ info.ticker }}"
+                                           value="{{ info.overseas_sales_ratio or '' }}"
+                                           step="0.1" min="0" max="100"
+                                           placeholder="0〜100">
+                                </td>
+                                <td>
+                                    <input type="number"
+                                           class="form-control form-control-sm bg-dark text-white border-secondary"
+                                           name="stable_ratio_{{ info.ticker }}"
+                                           value="{{ info.stable_shareholder_ratio or '' }}"
+                                           step="0.1" min="0" max="100"
+                                           placeholder="0〜100">
+                                </td>
+                                <td>
+                                    <input type="text"
+                                           class="form-control form-control-sm bg-dark text-white border-secondary"
+                                           name="notes_{{ info.ticker }}"
+                                           value="{{ info.notes or '' }}"
+                                           placeholder="メモ">
+                                </td>
+                            </tr>
+                            {% endfor %}
+
+                            <!-- TOPIXリストから未設定の銘柄を表示 -->
+                            {% set existing_tickers = manual_info_list | map(attribute='ticker') | list %}
+                            {% for code, name in all_stocks %}
+                                {% if code not in existing_tickers %}
+                                <tr class="opacity-75">
+                                    <td>
+                                        <strong>{{ code }}</strong>
+                                    </td>
+                                    <td>{{ name }}</td>
+                                    <td>
+                                        <input type="number"
+                                               class="form-control form-control-sm bg-dark text-white border-secondary"
+                                               name="overseas_ratio_{{ code }}"
+                                               step="0.1" min="0" max="100"
+                                               placeholder="未設定">
+                                    </td>
+                                    <td>
+                                        <input type="number"
+                                               class="form-control form-control-sm bg-dark text-white border-secondary"
+                                               name="stable_ratio_{{ code }}"
+                                               step="0.1" min="0" max="100"
+                                               placeholder="未設定">
+                                    </td>
+                                    <td>
+                                        <input type="text"
+                                               class="form-control form-control-sm bg-dark text-white border-secondary"
+                                               name="notes_{{ code }}"
+                                               placeholder="メモ">
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-end mt-3">
+                    <button type="submit" class="btn btn-info px-4">
+                        <i class="bi bi-save me-2"></i>手動設定を保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <!-- DBリセットゾーン（危険） -->
+    <div class="card bg-dark border border-danger mb-4">
+        <div class="card-header border-danger">
+            <h5 class="mb-0 text-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>データ管理
+            </h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">
+                株価キャッシュをクリアすると、次回アクセス時に全銘柄データを再取得します。
+            </p>
+            <button type="button" class="btn btn-outline-warning btn-sm"
+                    onclick="confirmClearCache()">
+                <i class="bi bi-trash me-1"></i>株価キャッシュをクリア
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // キャッシュクリアの確認
+    function confirmClearCache() {
+        if (confirm('株価キャッシュをクリアしますか？\n次回アクセス時に全データを再取得します。')) {
+            // キャッシュクリアAPIを呼び出す
+            fetch('/api/refresh_data')
+                .then(r => r.json())
+                .then(data => {
+                    alert('キャッシュをクリアしました。データ更新を開始しました。');
+                })
+                .catch(e => {
+                    alert('エラーが発生しました: ' + e.message);
+                });
+        }
+    }
+
+    // フォームバリデーション
+    document.getElementById('settings-form').addEventListener('submit', function(e) {
+        const minYield = parseFloat(document.getElementById('target-yield-min').value);
+        const maxYield = parseFloat(document.getElementById('target-yield-max').value);
+
+        if (minYield >= maxYield) {
+            e.preventDefault();
+            alert('目標配当利回りの最小値は最大値より小さく設定してください。');
+            return false;
+        }
+
+        const nikkeiPbr = parseFloat(document.getElementById('nikkei-pbr').value);
+        if (nikkeiPbr < 0.5 || nikkeiPbr > 5.0) {
+            e.preventDefault();
+            alert('日経平均PBRは0.5〜5.0の範囲で入力してください。');
+            return false;
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,1220 @@
+{% extends "base.html" %}
+{% block title %}仕様書準拠確認 - 株式投資アシスタント{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h2 class="mb-1"><i class="bi bi-clipboard2-check me-2 text-warning"></i>仕様書準拠確認レポート</h2>
+  <p class="text-muted small mb-0">仕様書の各ロジック項目が、コードのどこにどのように実装されているかを対照表形式で示します。</p>
+</div>
+
+<div class="alert alert-success border border-success mb-3">
+  <div class="d-flex align-items-center">
+    <i class="bi bi-check-circle-fill text-success fs-4 me-3"></i>
+    <div>
+      <strong>単体テスト結果: 51/51 全合格</strong>
+      <div class="text-muted small">python3 test_logic.py にて確認済み（investment_logic.py の全関数を仕様書数値でテスト）</div>
+    </div>
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# DATA SOURCE TABLE                                           #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="card bg-dark border border-info mb-4">
+  <div class="card-header border-info">
+    <h5 class="mb-0 text-info"><i class="bi bi-database me-2"></i>データ取得方法一覧</h5>
+    <small class="text-muted">仕様を実現するために必要な各数値・情報の取得方法（固定値 / 設定値 / API自動取得 / 未取得）</small>
+  </div>
+  <div class="card-body p-2">
+    <div class="mb-2 d-flex gap-3 flex-wrap small">
+      <span><span class="badge bg-success me-1">🟢 API</span>自動取得（yfinance / 株探等）</span>
+      <span><span class="badge bg-warning text-dark me-1">🟡 設定値</span>管理画面から変更可能</span>
+      <span><span class="badge bg-secondary me-1">🔴 固定値</span>コードにハードコード（変更不可）</span>
+      <span><span class="badge bg-danger me-1">⚫ 未取得</span>未実装・取得できていない</span>
+    </div>
+
+    {# ── 株価・市場データ ── #}
+    <h6 class="text-info mt-3 mb-1 border-bottom border-secondary pb-1">株価・市場データ</h6>
+    <table class="table table-dark table-bordered table-sm mb-3">
+      <thead class="table-secondary">
+        <tr><th style="width:25%">データ項目</th><th style="width:10%">種別</th><th style="width:40%">取得方法・ソース</th><th>備考</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>株価（終値）</td>
+          <td><span class="badge bg-success">🟢 API</span></td>
+          <td><code>t.history(start, end)['Close']</code></td>
+          <td>指定日以前の最新営業日を使用</td>
+        </tr>
+        <tr>
+          <td>52週高値・安値</td>
+          <td><span class="badge bg-success">🟢 API</span></td>
+          <td><code>t.history(1年分)['High'/'Low']</code></td>
+          <td>指定日以前1年分の最高・最低値</td>
+        </tr>
+        <tr>
+          <td>年間配当（合計）</td>
+          <td><span class="badge bg-success">🟢 API</span></td>
+          <td><code>t.history()['Dividends'].sum()</code></td>
+          <td>指定日以前1年分の配当合計。取得できない場合はt.info</td>
+        </tr>
+        <tr>
+          <td>日経平均PBR</td>
+          <td><span class="badge bg-warning text-dark">🟡 設定値</span></td>
+          <td>管理画面設定 <code>settings['nikkei_pbr']</code></td>
+          <td>デフォルト1.3。手動で最新値に更新が必要</td>
+        </tr>
+        <tr>
+          <td>銘柄リスト（TOPIX Core30/Large70）</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>stock_data.py: TOPIX_CORE30, TOPIX_LARGE70</code></td>
+          <td>銘柄リストはコードにハードコード。構成変更時は手動更新</td>
+        </tr>
+      </tbody>
+    </table>
+
+    {# ── 財務データ ── #}
+    <h6 class="text-info mt-3 mb-1 border-bottom border-secondary pb-1">財務データ（yfinance）</h6>
+    <table class="table table-dark table-bordered table-sm mb-3">
+      <thead class="table-secondary">
+        <tr><th style="width:25%">データ項目</th><th style="width:10%">種別</th><th style="width:40%">取得方法・ソース</th><th>備考</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>BPS（1株純資産）</td>
+          <td><span class="badge bg-success">🟢 API</span></td>
+          <td><code>balance_sheet[Stockholders Equity] / shares</code></td>
+          <td>t.balance_sheet（年次4期分）。4年超前はt.info['bookValue']</td>
+        </tr>
+        <tr>
+          <td>EPS（1株利益）</td>
+          <td><span class="badge bg-success">🟢 API</span></td>
+          <td><code>financials[Net Income] / shares</code></td>
+          <td>t.financials（年次4期分）。フォールバック: t.info['trailingEps']</td>
+        </tr>
+        <tr>
+          <td>PBR</td>
+          <td><span class="badge bg-success">🟢 計算</span></td>
+          <td>株価 ÷ BPS</td>
+          <td>上記2項目から自動計算</td>
+        </tr>
+        <tr>
+          <td>PER</td>
+          <td><span class="badge bg-success">🟢 計算</span></td>
+          <td>株価 ÷ EPS</td>
+          <td>上記2項目から自動計算</td>
+        </tr>
+        <tr>
+          <td>ROE</td>
+          <td><span class="badge bg-success">🟢 計算</span></td>
+          <td>純利益 ÷ 自己資本 × 100</td>
+          <td>balance_sheetデータから自動計算</td>
+        </tr>
+        <tr>
+          <td>自己資本比率</td>
+          <td><span class="badge bg-success">🟢 計算</span></td>
+          <td>自己資本 ÷ 総資産 × 100</td>
+          <td>t.balance_sheetから自動計算</td>
+        </tr>
+        <tr>
+          <td>純資産（億円）</td>
+          <td><span class="badge bg-success">🟢 API</span></td>
+          <td><code>balance_sheet[Stockholders Equity] / 1e8</code></td>
+          <td>t.balance_sheet（年次）</td>
+        </tr>
+        <tr>
+          <td>発行済株式数</td>
+          <td><span class="badge bg-success">🟢 API</span></td>
+          <td><code>t.info['sharesOutstanding']</code></td>
+          <td>現在値のみ（過去時点の近似に使用）</td>
+        </tr>
+        <tr>
+          <td>海外売上高比率</td>
+          <td><span class="badge bg-danger">⚫ 未取得</span></td>
+          <td>手動入力テーブル <code>stock_manual_info</code>（未入力）</td>
+          <td>yfinanceは提供なし。国際優良企業条件①が未判定</td>
+        </tr>
+        <tr>
+          <td>プライム市場上場</td>
+          <td><span class="badge bg-danger">⚫ 未取得</span></td>
+          <td>TOPIX Quick15リストで実質代替（自動判定なし）</td>
+          <td>yfinanceは上場市場区分を提供なし。財務優良条件①が未判定</td>
+        </tr>
+        <tr>
+          <td>日平均売買代金</td>
+          <td><span class="badge bg-danger">⚫ 未取得</span></td>
+          <td>未実装</td>
+          <td>純資産≤1000億円→売買代金≥1億円の条件が未チェック</td>
+        </tr>
+      </tbody>
+    </table>
+
+    {# ── EPS上方修正 ── #}
+    <h6 class="text-info mt-3 mb-1 border-bottom border-secondary pb-1">EPS上方修正（通期予想履歴）</h6>
+    <table class="table table-dark table-bordered table-sm mb-3">
+      <thead class="table-secondary">
+        <tr><th style="width:25%">データ項目</th><th style="width:10%">種別</th><th style="width:40%">取得方法・ソース</th><th>備考</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>通期予想EPS修正履歴<br>（現在の決算期）</td>
+          <td><span class="badge bg-success">🟢 API</span></td>
+          <td><code>eps_scraper.py</code> → 株探 <code>fin_year_forecast_d</code></td>
+          <td>現在の決算期の全修正データが無料取得可能（7日キャッシュ）</td>
+        </tr>
+        <tr>
+          <td>通期予想EPS修正履歴<br>（過去決算期の中間値）</td>
+          <td><span class="badge bg-danger">⚫ 未取得</span></td>
+          <td>株探プレミアム（有料）</td>
+          <td>FY2022〜前期の中間修正値は有料。年次実績比較で代替</td>
+        </tr>
+        <tr>
+          <td>年次実績EPS（フォールバック）</td>
+          <td><span class="badge bg-success">🟢 API</span></td>
+          <td><code>check_annual_eps_revision()</code> ← t.financials</td>
+          <td>通期予想データ不足時は年次実績前期比で代替（look-aheadなし）</td>
+        </tr>
+      </tbody>
+    </table>
+
+    {# ── 売買ルール（固定値・設定値） ── #}
+    <h6 class="text-info mt-3 mb-1 border-bottom border-secondary pb-1">売買ルール（パラメータ）</h6>
+    <table class="table table-dark table-bordered table-sm mb-3">
+      <thead class="table-secondary">
+        <tr><th style="width:25%">ルール・パラメータ</th><th style="width:10%">種別</th><th style="width:20%">値</th><th>変更方法</th></tr>
+      </thead>
+      <tbody>
+        <tr class="table-secondary"><td colspan="4"><strong>短期スコアリング閾値</strong></td></tr>
+        <tr>
+          <td>安心割安株: PBR ≤ 0.75 または 配当利回り ≥ 2.4%</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>0.75 / 2.4</code></td>
+          <td>investment_logic.py L234 を直接変更</td>
+        </tr>
+        <tr>
+          <td>PBRスコア (≤0.5→+2, ≤0.8→+1, ≥1.0→-2)</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>0.5 / 0.8 / 1.0</code></td>
+          <td>investment_logic.py L142-148</td>
+        </tr>
+        <tr>
+          <td>PERスコア (≤10→+4, ≤15→+2, ≥20→-3)</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>10 / 15 / 20</code></td>
+          <td>investment_logic.py L158-163</td>
+        </tr>
+        <tr>
+          <td>52週安値スコア (20%以内→+2)</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>1.2倍以内</code></td>
+          <td>investment_logic.py L206</td>
+        </tr>
+        <tr class="table-secondary"><td colspan="4"><strong>短期売買ルール</strong></td></tr>
+        <tr>
+          <td>ナンピン水準</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>-10% / -15% / -20%</code></td>
+          <td>investment_logic.py L264-266</td>
+        </tr>
+        <tr>
+          <td>利確目標（通常）</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>購入価格 × 1.09 (+9%)</code></td>
+          <td>investment_logic.py L312</td>
+        </tr>
+        <tr>
+          <td>利確目標（ナンピン後）</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>平均価格 × 1.10 (+10%)</code></td>
+          <td>investment_logic.py L307</td>
+        </tr>
+        <tr>
+          <td>ロスカット</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>購入価格 × 0.75 (-25%)</code></td>
+          <td>investment_logic.py L317</td>
+        </tr>
+        <tr>
+          <td>保有期限（初期）</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>3ヶ月（90日）</code></td>
+          <td>simulation.py: simulate_short_term()</td>
+        </tr>
+        <tr class="table-secondary"><td colspan="4"><strong>中期売買ルール</strong></td></tr>
+        <tr>
+          <td>中期買い判定係数（国際優良・黒字）</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>日経PBR × 0.6</code></td>
+          <td>investment_logic.py L384</td>
+        </tr>
+        <tr>
+          <td>中期買い判定係数（国際優良・赤字）</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>日経PBR × 0.3</code></td>
+          <td>investment_logic.py L384</td>
+        </tr>
+        <tr>
+          <td>中期買い判定係数（財務優良・黒字）</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>日経PBR × 0.5</code></td>
+          <td>investment_logic.py L386</td>
+        </tr>
+        <tr>
+          <td>中期買い判定係数（財務優良・赤字）</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>日経PBR × 0.25</code></td>
+          <td>investment_logic.py L386</td>
+        </tr>
+        <tr>
+          <td>中期ナンピン後売り目標上乗せ</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>レジスタンス1 × 1.1</code></td>
+          <td>investment_logic.py L448</td>
+        </tr>
+        <tr class="table-secondary"><td colspan="4"><strong>長期売買ルール</strong></td></tr>
+        <tr>
+          <td>目標配当利回り（最小）</td>
+          <td><span class="badge bg-warning text-dark">🟡 設定値</span></td>
+          <td><code>3.0%</code>（デフォルト）</td>
+          <td>管理画面 → 設定 から変更可能</td>
+        </tr>
+        <tr>
+          <td>目標配当利回り（最大）</td>
+          <td><span class="badge bg-warning text-dark">🟡 設定値</span></td>
+          <td><code>5.0%</code>（デフォルト）</td>
+          <td>管理画面 → 設定 から変更可能</td>
+        </tr>
+        <tr>
+          <td>長期売り価格計算式</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>最安値 × (1 + 利回り × 10)</code></td>
+          <td>investment_logic.py L509</td>
+        </tr>
+        <tr class="table-secondary"><td colspan="4"><strong>銘柄選定条件（閾値）</strong></td></tr>
+        <tr>
+          <td>国際優良: BPS ≥ 500円</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>500</code></td>
+          <td>investment_logic.py L37</td>
+        </tr>
+        <tr>
+          <td>国際優良: 自己資本比率 ≥ 30%</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>30</code></td>
+          <td>investment_logic.py L46</td>
+        </tr>
+        <tr>
+          <td>財務優良: 純資産 ≥ 500億円</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>500</code></td>
+          <td>investment_logic.py L70</td>
+        </tr>
+        <tr>
+          <td>財務優良: BPS ≥ 1000円</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>1000</code></td>
+          <td>investment_logic.py L79</td>
+        </tr>
+        <tr>
+          <td>財務優良: 自己資本比率 ≥ 60%</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>60</code></td>
+          <td>investment_logic.py L88</td>
+        </tr>
+        <tr>
+          <td>EPS上方修正シグナル閾値</td>
+          <td><span class="badge bg-secondary">🔴 固定値</span></td>
+          <td><code>+10%</code></td>
+          <td>simulation.py: check_eps_revision_from_forecast() / check_annual_eps_revision()</td>
+        </tr>
+      </tbody>
+    </table>
+
+    {# ── チャート分析 ── #}
+    <h6 class="text-info mt-3 mb-1 border-bottom border-secondary pb-1">チャート分析（中期）</h6>
+    <table class="table table-dark table-bordered table-sm mb-0">
+      <thead class="table-secondary">
+        <tr><th style="width:25%">データ項目</th><th style="width:10%">種別</th><th style="width:40%">取得方法・ソース</th><th>備考</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>サポート1・2 / レジスタンス1・2</td>
+          <td><span class="badge bg-success">🟢 計算</span></td>
+          <td><code>t.history(1年分)</code> → 株価分布から自動算出</td>
+          <td>investment_logic.py: calculate_support_resistance()</td>
+        </tr>
+        <tr>
+          <td>中期チャート S/R 水準設定</td>
+          <td><span class="badge bg-warning text-dark">🟡 設定値</span></td>
+          <td>ポートフォリオ画面から手動設定</td>
+          <td>個別銘柄のS/R値はDBに保存して使用</td>
+        </tr>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+
+{# 凡例 #}
+<div class="mb-4 d-flex gap-3 flex-wrap">
+  <span><span class="badge bg-success me-1">✓ 実装済み</span>コード・テストで確認</span>
+  <span><span class="badge bg-warning text-dark me-1">⚠ 手動</span>自動判定なし・リスト選定または手動設定</span>
+  <span><span class="badge bg-secondary me-1">目視</span>自動テストなし・コードは存在</span>
+  <span><span class="badge bg-danger me-1">❌ 未実装</span>仕様に記載されているが実装なし</span>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 1: 銘柄フィルタ #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-secondary mb-4">
+  <div class="card-header border-secondary">
+    <h5 class="mb-0 text-warning"><i class="bi bi-funnel me-2"></i>1. 銘柄フィルタ条件</h5>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark table-bordered table-sm mb-0">
+      <thead class="table-secondary">
+        <tr>
+          <th style="width:28%">仕様書の条件</th>
+          <th style="width:28%">実装場所（ファイル:行）</th>
+          <th>コードエビデンス / 補足</th>
+          <th style="width:8%">状態</th>
+        </tr>
+      </thead>
+      <tbody>
+        {# 国際優良企業 #}
+        <tr class="table-secondary">
+          <td colspan="4"><strong>国際優良企業</strong>（check_international_excellent()）</td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-primary me-1">国際優良①</span>TOPIX Core30 / Large70 採用銘柄</td>
+          <td><code>stock_data.py</code><br><small class="text-muted">TOPIX_QUICK15 リスト</small></td>
+          <td>Quick15 銘柄を手動選定済み。自動的に TOPIX 採用銘柄のみ対象となっている。yfinance ではリアルタイムの採用確認は不可。</td>
+          <td><span class="badge bg-warning text-dark">⚠ 手動</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-primary me-1">国際優良②</span>海外売上高比率 ≥ 30%</td>
+          <td><code>investment_logic.py:15–55</code><br><small class="text-muted">check_international_excellent()</small></td>
+          <td><pre class="mb-0 small text-danger"># check_international_excellent() 内に
+# 海外売上高チェックのコードが存在しない
+# yfinance は海外売上比率を提供していない</pre></td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-primary me-1">国際優良③</span>日平均売買代金 ≥ 30億円</td>
+          <td><code>investment_logic.py:15–55</code></td>
+          <td><pre class="mb-0 small text-danger"># check_international_excellent() 内に
+# 売買代金チェックのコードが存在しない
+# ※ yfinance の t.info['averageVolume'] ×
+#   株価 で近似取得は可能</pre></td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-primary me-1">国際優良</span>BPS ≥ 500円</td>
+          <td><code>investment_logic.py:33–40</code></td>
+          <td><pre class="mb-0 small text-success">if bps >= 500:
+    reasons.append(f"BPS {bps:.0f}円 ≥ 500円 ✓")
+else:
+    passed = False</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-primary me-1">国際優良</span>自己資本比率 ≥ 30%</td>
+          <td><code>investment_logic.py:43–53</code></td>
+          <td><pre class="mb-0 small text-success">if equity_ratio >= 30:
+    reasons.append(f"... ≥ 30% ✓")
+else:
+    passed = False</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        {# 財務優良企業 #}
+        <tr class="table-secondary">
+          <td colspan="4"><strong>財務優良企業</strong>（check_financial_excellent()）</td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-info me-1">財務優良①</span>プライム市場上場</td>
+          <td><code>investment_logic.py:58–109</code><br><small class="text-muted">check_financial_excellent()</small></td>
+          <td><pre class="mb-0 small text-danger"># check_financial_excellent() 内に
+# プライム市場確認のコードが存在しない
+# yfinance は上場市場区分を提供していない</pre></td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-info me-1">財務優良</span>純資産 ≥ 500億円</td>
+          <td><code>investment_logic.py:76–85</code></td>
+          <td><pre class="mb-0 small text-success">if net_assets >= 500:
+    reasons.append(f"... ≥ 500億円 ✓")
+else:
+    passed = False</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-info me-1">財務優良③</span>純資産 ≤ 1000億円の場合、日平均売買代金 ≥ 1億円</td>
+          <td><code>investment_logic.py:58–109</code></td>
+          <td><pre class="mb-0 small text-danger"># 純資産 ≤ 1000億 の場合の
+# 売買代金チェックのコードが存在しない</pre></td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-info me-1">財務優良</span>BPS ≥ 1000円</td>
+          <td><code>investment_logic.py:88–96</code></td>
+          <td><pre class="mb-0 small text-success">if bps >= 1000:
+    reasons.append(f"BPS {bps:.0f}円 ≥ 1000円 ✓")
+else:
+    passed = False</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-info me-1">財務優良</span>自己資本比率 ≥ 60%</td>
+          <td><code>investment_logic.py:99–107</code></td>
+          <td><pre class="mb-0 small text-success">if equity_ratio >= 60:
+    reasons.append(f"... ≥ 60% ✓")
+else:
+    passed = False</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="alert alert-warning small m-2 mb-2">
+      <i class="bi bi-exclamation-triangle me-1"></i>
+      <strong>フィルタ実質的な運用:</strong>
+      yfinance は海外売上比率・市場区分・日次売買代金の詳細データを提供しない。
+      現在の実装では Quick15 リスト（代表的 TOPIX 大型株）に絞ることで条件①③を手動で担保している。
+      条件②③（売買代金）・プライム市場・海外売上比率の自動チェックは未実装。
+    </div>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 2: 短期スコアリング #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-warning mb-4">
+  <div class="card-header border-warning">
+    <h5 class="mb-0 text-warning"><i class="bi bi-star me-2"></i>2. 短期スコアリング（5項目）</h5>
+    <small class="text-muted">investment_logic.py:116–217 &nbsp;|&nbsp; calculate_short_term_score()</small>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark table-bordered table-sm mb-0">
+      <thead class="table-secondary">
+        <tr>
+          <th>指標</th>
+          <th style="width:22%">仕様書の条件→点数</th>
+          <th>実装コード（行番号）</th>
+          <th style="width:8%">状態</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td rowspan="3"><strong>PBR</strong></td>
+          <td>≤ 0.5倍 → <span class="text-success">+4</span></td>
+          <td><pre class="mb-0 small">L142: if pbr <= 0.5:
+L143:     pbr_score = 4</pre></td>
+          <td rowspan="3"><span class="badge bg-success">✓×3</span></td>
+        </tr>
+        <tr>
+          <td>≤ 0.8倍 → <span class="text-success">+2</span></td>
+          <td><pre class="mb-0 small">L144: elif pbr <= 0.8:
+L145:     pbr_score = 2</pre></td>
+        </tr>
+        <tr>
+          <td>≥ 1.0倍 → <span class="text-danger">-3</span></td>
+          <td><pre class="mb-0 small">L146: elif pbr >= 1.0:
+L147:     pbr_score = -3</pre></td>
+        </tr>
+        <tr>
+          <td rowspan="3"><strong>PER</strong></td>
+          <td>≤ 10倍 → <span class="text-success">+4</span></td>
+          <td><pre class="mb-0 small">L158: if per <= 10:
+L159:     per_score = 4</pre></td>
+          <td rowspan="3"><span class="badge bg-success">✓×3</span></td>
+        </tr>
+        <tr>
+          <td>≤ 15倍 → <span class="text-success">+2</span></td>
+          <td><pre class="mb-0 small">L160: elif per <= 15:
+L161:     per_score = 2</pre></td>
+        </tr>
+        <tr>
+          <td>≥ 20倍 → <span class="text-danger">-3</span></td>
+          <td><pre class="mb-0 small">L162: elif per >= 20:
+L163:     per_score = -3</pre></td>
+        </tr>
+        <tr>
+          <td rowspan="3"><strong>ROE</strong></td>
+          <td>≥ 16% → <span class="text-success">+4</span></td>
+          <td><pre class="mb-0 small">L174: if roe >= 16:
+L175:     roe_score = 4</pre></td>
+          <td rowspan="3"><span class="badge bg-success">✓×3</span></td>
+        </tr>
+        <tr>
+          <td>≥ 8% → <span class="text-success">+2</span></td>
+          <td><pre class="mb-0 small">L176: elif roe >= 8:
+L177:     roe_score = 2</pre></td>
+        </tr>
+        <tr>
+          <td>≤ 2% → <span class="text-danger">-3</span></td>
+          <td><pre class="mb-0 small">L178: elif roe <= 2:
+L179:     roe_score = -3</pre></td>
+        </tr>
+        <tr>
+          <td rowspan="3"><strong>配当利回り</strong></td>
+          <td>≥ 4% → <span class="text-success">+4</span></td>
+          <td><pre class="mb-0 small">L190: if dividend_yield >= 4:
+L191:     div_score = 4</pre></td>
+          <td rowspan="3"><span class="badge bg-success">✓×3</span></td>
+        </tr>
+        <tr>
+          <td>≥ 3% → <span class="text-success">+2</span></td>
+          <td><pre class="mb-0 small">L192: elif dividend_yield >= 3:
+L193:     div_score = 2</pre></td>
+        </tr>
+        <tr>
+          <td>≤ 1.5% → <span class="text-danger">-3</span></td>
+          <td><pre class="mb-0 small">L194: elif dividend_yield <= 1.5:
+L195:     div_score = -3</pre></td>
+        </tr>
+        <tr>
+          <td rowspan="2"><strong>52週安値比</strong></td>
+          <td>≤ 1.2倍 → <span class="text-success">+2</span></td>
+          <td><pre class="mb-0 small">L206: if price_vs_52w_low <= 1.2:
+L207:     price_score = 2</pre></td>
+          <td rowspan="2"><span class="badge bg-success">✓×2</span></td>
+        </tr>
+        <tr>
+          <td>≥ 1.5倍 → <span class="text-danger">-3</span></td>
+          <td><pre class="mb-0 small">L208: elif price_vs_52w_low >= 1.5:
+L209:     price_score = -3</pre></td>
+        </tr>
+        <tr class="table-secondary">
+          <td colspan="2"><strong>合計最大スコア確認</strong><br><small>PBR+4, PER+4, ROE+4, 配当+4, 安値比+2 = +18点</small></td>
+          <td><pre class="mb-0 small">テスト: calculate_short_term_score(0.4, 8, 20, 5.0, 1.1)
+→ score == 18  ✓</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 3: 短期区分判定 #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-info mb-4">
+  <div class="card-header border-info">
+    <h5 class="mb-0 text-info"><i class="bi bi-diagram-3 me-2"></i>3. 短期区分判定</h5>
+    <small class="text-muted">investment_logic.py:220–246 &nbsp;|&nbsp; classify_short_term()</small>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark table-bordered table-sm mb-0">
+      <thead class="table-secondary">
+        <tr><th style="width:35%">仕様書の条件</th><th>実装コード（行番号）</th><th style="width:8%">状態</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>スコア ≥ 2 かつ 増益<br>かつ PBR ≤ 0.75 または 配当 ≥ 2.4%<br>→ <span class="text-warning">安心割安株</span></td>
+          <td><pre class="mb-0 small">L232: if score >= 2 and is_profit_increase:
+L234:     if (pbr is not None and pbr <= 0.75) or \
+L235:        (dividend_yield is not None and dividend_yield >= 2.4):
+L236:         return "安心割安株"</pre></td>
+          <td><span class="badge bg-success">✓×3</span></td>
+        </tr>
+        <tr>
+          <td>スコア ≥ 2 かつ 増益<br>それ以外 → <span class="text-info">通常割安株</span></td>
+          <td><pre class="mb-0 small">L237: else:
+L238:     return "通常割安株"</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>スコア ≤ -10 → <span class="text-success">成長株</span></td>
+          <td><pre class="mb-0 small">L240: elif score <= -10:
+L241:     return "成長株"</pre></td>
+          <td><span class="badge bg-success">✓×2</span></td>
+        </tr>
+        <tr>
+          <td>中間 → <span class="text-secondary">スキップ</span></td>
+          <td><pre class="mb-0 small">L243: else:
+L244:     return "スキップ"</pre></td>
+          <td><span class="badge bg-success">✓×3</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 3b: 短期買いトリガー（EPS上方修正） #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-success mb-4">
+  <div class="card-header border-success">
+    <h5 class="mb-0 text-success"><i class="bi bi-lightning me-2"></i>3b. 短期買いトリガー（EPS 上方修正）</h5>
+    <small class="text-muted">simulation.py &nbsp;|&nbsp; check_annual_eps_revision()</small>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark table-bordered table-sm mb-0">
+      <thead class="table-secondary">
+        <tr><th style="width:35%">仕様書の条件</th><th>実装コード（行番号）</th><th style="width:8%">状態</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>EPS 年間予想が前回比 +10% 以上の上方修正 → 買いトリガー</td>
+          <td><pre class="mb-0 small text-success">simulation.py
+def check_annual_eps_revision(bs_data, target_date):
+    # t.financials の年次純利益を使用
+    # target_date 以前の決算データのみ参照（look-ahead なし）
+    # 最新決算期 vs 前期 純利益を比較
+    # 前期比 +10%以上 かつ黒字 → シグナル
+
+get_historical_fundamentals() 内で計算:
+    eps_rev_signal, eps_rev_rate =
+        check_annual_eps_revision(bs_data, target_date)
+    return { ..., 'eps_revision_signal': eps_rev_signal, ... }
+
+_screen_one_stock() で info から参照:
+    eps_revision_signal = info.get('eps_revision_signal', False)
+
+現在スクリーニング・過去シミュレーション両方で有効</pre></td>
+          <td><span class="badge bg-success">✓ 実装済</span><br><small class="text-muted">年次前期比・時点固定</small></td>
+        </tr>
+        <tr class="table-secondary">
+          <td colspan="3">
+            <i class="bi bi-info-circle me-1"></i>
+            <strong>実装方式:</strong>
+            yfinance <code>t.financials</code> の年次純利益（直近4年分）を <code>target_date</code> でフィルタし、
+            最新決算期 vs 前期を比較。シミュレーション時も将来データを参照しない。
+            yfinance は過去時点の年間予想EPSを提供しないため、実績年次純利益を代替として使用。
+            赤字前期との比較は除外（黒字転換は除外、黒字→黒字改善のみ対象）。
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 4: ナンピン #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-secondary mb-4">
+  <div class="card-header border-secondary">
+    <h5 class="mb-0 text-light"><i class="bi bi-arrow-down-circle me-2"></i>4. 短期ナンピン水準と数量</h5>
+    <small class="text-muted">investment_logic.py:249–285 &nbsp;|&nbsp; calculate_nanpin_targets()&nbsp;／&nbsp;simulation.py:760–826 &nbsp;|&nbsp; simulate_short_term()</small>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark table-bordered table-sm mb-0">
+      <thead class="table-secondary">
+        <tr><th style="width:35%">仕様書の条件</th><th>実装コード（行番号）</th><th style="width:8%">状態</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ナンピン水準: -10%, -15%, -20%</td>
+          <td><pre class="mb-0 small">investment_logic.py
+L263: nanpin_levels = [
+L264:     {'ratio': -0.10, ...},
+L265:     {'ratio': -0.15, ...},
+L266:     {'ratio': -0.20, ...},
+L267: ]</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>安心割安株: 全水準 ×1（同数量）</td>
+          <td><pre class="mb-0 small">investment_logic.py
+L270: if category == "安心割安株":
+L271:     multipliers = [1, 1, 1]</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>通常割安株/成長株: ×2, ×3, ×4</td>
+          <td><pre class="mb-0 small">investment_logic.py
+L273:     multipliers = [2, 3, 4]</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>シミュレーション内の実際のナンピン判定</td>
+          <td><pre class="mb-0 small">simulation.py
+L808: for i, pct in enumerate(nanpin_pcts):
+L809:     if not nanpin_done[i] and \
+           current_price <= purchase_price * (1 + pct):
+L810:         np_shares = shares * nanpin_mults[i]
+L813:         nanpin_done[i] = True
+L818:         sell_target = avg_price * 1.10</pre></td>
+          <td><span class="badge bg-secondary">目視</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 5: 売り目標・ロスカット（短期） #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-danger mb-4">
+  <div class="card-header border-danger">
+    <h5 class="mb-0 text-danger"><i class="bi bi-cash-coin me-2"></i>5. 短期: 売り目標・ロスカット・期限</h5>
+    <small class="text-muted">investment_logic.py:288–324 &nbsp;|&nbsp; calculate_sell_target()&nbsp;／&nbsp;simulation.py:776–920</small>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark table-bordered table-sm mb-0">
+      <thead class="table-secondary">
+        <tr><th style="width:35%">仕様書の条件</th><th>実装コード（行番号）</th><th style="width:8%">状態</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>通常の利確: 買い値 × 1.09 (+9%)</td>
+          <td><pre class="mb-0 small">investment_logic.py
+L312:     profit_target = round(purchase_price * 1.09, 0)
+L314:     target_rate = 9.0
+
+simulation.py
+L779: sell_target = purchase_price * 1.09</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>ナンピン後の利確: 平均価格 × 1.10 (+10%)</td>
+          <td><pre class="mb-0 small">investment_logic.py
+L307:     profit_target = round(nanpin_avg_price * 1.10, 0)
+L309:     target_rate = 10.0
+
+simulation.py
+L818:     sell_target = avg_price * 1.10</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>ロスカット: 買い値 × 0.75 (-25%)</td>
+          <td><pre class="mb-0 small">investment_logic.py
+L317: loss_cut = round(purchase_price * 0.75, 0)
+
+simulation.py
+L779: loss_cut = purchase_price * 0.75
+L859: if current_price <= loss_cut:</pre></td>
+          <td><span class="badge bg-success">✓×2</span></td>
+        </tr>
+        <tr>
+          <td>3ヶ月経過: 安心割安株 → 中期/長期移行</td>
+          <td><pre class="mb-0 small">simulation.py
+L774: deadline = purchase_date + timedelta(days=90)
+L884: if current_date >= deadline:
+L885:     if category == '安心割安株':
+L889:         result = {'outcome': '中期/長期へ移行', ...}</pre></td>
+          <td><span class="badge bg-secondary">目視</span></td>
+        </tr>
+        <tr>
+          <td>3ヶ月経過: 通常割安株/成長株 → 1回延長</td>
+          <td><pre class="mb-0 small">simulation.py
+L909: elif not extended:
+L911:     deadline = deadline + timedelta(days=90)
+L912:     extended = True</pre></td>
+          <td><span class="badge bg-secondary">目視</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 6: 中期投資ロジック #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-success mb-4">
+  <div class="card-header border-success">
+    <h5 class="mb-0 text-success"><i class="bi bi-graph-up me-2"></i>6. 中期投資ロジック</h5>
+    <small class="text-muted">investment_logic.py:360–392 &nbsp;|&nbsp; check_medium_term_buy()&nbsp;／&nbsp;simulation.py:972–1118 &nbsp;|&nbsp; simulate_medium_term()</small>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark table-bordered table-sm mb-0">
+      <thead class="table-secondary">
+        <tr><th style="width:35%">仕様書の条件</th><th>実装コード（行番号）</th><th style="width:8%">状態</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>国際優良企業・黒字: 係数 × 0.6</td>
+          <td><pre class="mb-0 small">L382: if market_type == 'international':
+L383:     coefficient = 0.6 if eps_positive else 0.3</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>国際優良企業・赤字: 係数 × 0.3</td>
+          <td><pre class="mb-0 small">L383:     coefficient = 0.6 if eps_positive else 0.3</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>財務優良企業・黒字: 係数 × 0.5</td>
+          <td><pre class="mb-0 small">L384: else:  # financial
+L385:     coefficient = 0.5 if eps_positive else 0.25</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>財務優良企業・赤字: 係数 × 0.25</td>
+          <td><pre class="mb-0 small">L385:     coefficient = 0.5 if eps_positive else 0.25</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        <tr>
+          <td>シグナル判定: 個別PBR ≤ 日経PBR × 係数</td>
+          <td><pre class="mb-0 small">L387: threshold_pbr = nikkei_pbr * coefficient
+L390: has_signal = pbr <= threshold_pbr</pre></td>
+          <td><span class="badge bg-success">✓×2</span></td>
+        </tr>
+        <tr>
+          <td>日経平均PBR: 各年度の実際の値を使用</td>
+          <td><pre class="mb-0 small text-warning">simulation.py
+L... nikkei_pbr = float(get_setting('nikkei_pbr'))
+# ⚠ 管理画面で手動設定した1つの値のみ使用
+# 年度別・月次別の自動参照なし
+# バックテスト時も同じ固定値で全期間を計算</pre></td>
+          <td><span class="badge bg-warning text-dark">⚠ 手動設定</span></td>
+        </tr>
+        <tr>
+          <td>チャート分析: 過去5年週足データから<br>サポート / レジスタンス算出</td>
+          <td><pre class="mb-0 small text-success">simulation.py
+L1001: five_years_ago = purchase_date - timedelta(days=365*5)
+L1002: hist_5y = t.history(
+L1003:     start=five_years_ago.strftime('%Y-%m-%d'),
+L1004:     end=purchase_date.strftime('%Y-%m-%d'),
+L1005:     interval='1wk'
+L1006: )
+L1007: sr = calculate_support_resistance(hist_5y)
+L1009: support1    = sr.get('support1', price*0.90)
+L1010: support2    = sr.get('support2', price*0.80)
+L1011: resistance1 = sr.get('resistance1', price*1.20)</pre></td>
+          <td><span class="badge bg-success">✓ 実装済み</span></td>
+        </tr>
+        <tr>
+          <td>保有中ステータス管理<br>（監視中→1次保有→ナンピン済み）</td>
+          <td><pre class="mb-0 small text-success">investment_logic.py
+L418–462: calculate_medium_term_status()
+  monitoring: price ≤ support1 → buy通知
+  holding_primary: price ≥ resistance1 → sell通知
+                   price ≤ support2 → nanpin通知
+  holding_nanpin:  price ≥ resistance1 × 1.1 → sell通知</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 7: 長期投資ロジック #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border mb-4" style="border-color:#7c3aed !important">
+  <div class="card-header" style="border-color:#7c3aed !important">
+    <h5 class="mb-0" style="color:#a78bfa"><i class="bi bi-hourglass me-2"></i>7. 長期投資ロジック</h5>
+    <small class="text-muted">investment_logic.py:469–530 &nbsp;|&nbsp; simulation.py:1125–1280 &nbsp;|&nbsp; simulate_long_term()</small>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark table-bordered table-sm mb-0">
+      <thead class="table-secondary">
+        <tr><th style="width:35%">仕様書の条件</th><th>実装コード（行番号）</th><th style="width:8%">状態</th></tr>
+      </thead>
+      <tbody>
+        {# 安定高配当4条件 #}
+        <tr class="table-secondary">
+          <td colspan="3"><strong>長期安定高配当株 選定4条件</strong>（スクリーニング時に適用）</td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-secondary me-1">長期①</span>海外売上高比率 ≥ 30%</td>
+          <td><pre class="mb-0 small text-danger">simulation.py L401–410:
+if annual_div:
+    max_buy, min_buy = calculate_long_term_buy_price(...)
+    if max_buy and price <= max_buy:
+        entries['long'].append(le)
+# ⚠ 海外売上比率チェックなし</pre></td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-secondary me-1">長期②</span>連続増配 または 安定配当実績</td>
+          <td><pre class="mb-0 small text-danger"># 配当履歴の継続性チェックなし
+# yfinance t.history Dividends から
+# 過去の支払い実績は取得可能だが
+# 増配・安定配当の判定ロジックなし</pre></td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-secondary me-1">長期③</span>TOPIX Core30 採用銘柄</td>
+          <td>Quick15 リストの手動選定で代替。yfinance では TOPIX 構成種別の自動取得不可。</td>
+          <td><span class="badge bg-warning text-dark">⚠ 手動</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge bg-secondary me-1">長期④</span>自己資本比率 ≥ 30%</td>
+          <td><pre class="mb-0 small text-danger"># 長期スクリーニング段階（L401–410）に
+# equity_ratio チェックなし
+# ※ check_international_excellent() で
+#   BPS+自己資本比率は別途チェック済みだが
+#   長期フィルタとしては未連動</pre></td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+        </tr>
+        {# 買い目標 #}
+        <tr class="table-secondary">
+          <td colspan="3"><strong>買い目標株価の計算</strong></td>
+        </tr>
+        <tr>
+          <td>買い目標株価 = 年間配当 ÷ 目標利回り(3〜5%)<br><small>例) 配当120円 → 最大4000円・最小2400円</small></td>
+          <td><pre class="mb-0 small text-success">investment_logic.py
+L486: max_buy_price = annual_dividend / (target_yield_min / 100)
+L489: min_buy_price = annual_dividend / (target_yield_max / 100)
+
+テスト: calculate_long_term_buy_price(120, 3.0, 5.0)
+→ (4000.0, 2400.0)  ✓</pre></td>
+          <td><span class="badge bg-success">✓×3</span></td>
+        </tr>
+        <tr>
+          <td>シグナル判定: 現在株価 ≤ 最大買い目標価格</td>
+          <td><pre class="mb-0 small text-success">simulation.py
+L405: if max_buy and price <= max_buy:
+    （長期候補として entries['long'] に追加）</pre></td>
+          <td><span class="badge bg-success">✓</span></td>
+        </tr>
+        {# ナンピン #}
+        <tr class="table-secondary">
+          <td colspan="3"><strong>長期ナンピンと売りルール</strong>（simulate_long_term()）</td>
+        </tr>
+        <tr>
+          <td>ナンピン1回目: 初回から -10%<br>同株数で追加購入</td>
+          <td><pre class="mb-0 small text-success">simulation.py
+L1158: nanpin1_price = purchase_price * 0.90  # -10%
+L1190: if not nanpin_done[0] and current_price <= nanpin1_price:
+L1191:     holdings.append({'price': current_price,
+                'shares': shares})  # 同株数</pre></td>
+          <td><span class="badge bg-success">✓ 実装済み</span></td>
+        </tr>
+        <tr>
+          <td>ナンピン2回目: 初回から -20%<br>同株数で追加購入</td>
+          <td><pre class="mb-0 small text-success">simulation.py
+L1159: nanpin2_price = purchase_price * 0.80  # -20%
+L1202: if not nanpin_done[1] and current_price <= nanpin2_price:
+L1203:     holdings.append({'price': current_price,
+                'shares': shares})  # 同株数</pre></td>
+          <td><span class="badge bg-success">✓ 実装済み</span></td>
+        </tr>
+        <tr>
+          <td>売り目標: 最安値 × (1 + 目標利回り × 10)<br>最安値更新のたびに再計算</td>
+          <td><pre class="mb-0 small text-success">simulation.py
+L1155: lowest_price = purchase_price
+L1156: sell_target = purchase_price * (1 + (target_yield/100) * 10)
+L1181: if current_price < lowest_price:
+L1182:     lowest_price = current_price
+L1183:     sell_target = lowest_price * (1 + (target_yield/100) * 10)</pre></td>
+          <td><span class="badge bg-success">✓ 実装済み</span></td>
+        </tr>
+        {# 減配ルール #}
+        <tr class="table-secondary">
+          <td colspan="3"><strong>長期 減配時のルール</strong></td>
+        </tr>
+        <tr>
+          <td>減配発表 → 買い増し待機<br>（配当水準で売り目標再計算）</td>
+          <td><pre class="mb-0 small text-danger"># simulate_long_term() 内に
+# 減配チェックのコードなし
+# ロスカット設定もなし
+# 配当変更時の処理なし</pre></td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="alert alert-info small m-2 mb-2">
+      <i class="bi bi-info-circle me-1"></i>
+      <strong>長期ナンピン・売りルールは正しく実装済みです。</strong>
+      simulation.py の simulate_long_term() を確認することで動作を検証できます。
+      未実装は「安定高配当4条件」（海外売上比率・連続増配・自己資本比率）と「減配時ルール」です。
+    </div>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 8: 未実装まとめ #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-danger mb-4">
+  <div class="card-header border-danger">
+    <h5 class="mb-0 text-danger"><i class="bi bi-x-circle me-2"></i>8. 未実装・手動対応の一覧</h5>
+  </div>
+  <div class="card-body">
+    <table class="table table-dark table-bordered table-sm">
+      <thead class="table-secondary">
+        <tr><th>仕様項目</th><th>状態</th><th>理由・備考</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>国際優良企業 ②海外売上高比率30%以上</td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+          <td>yfinance は海外売上比率を提供しない。有料データ（Bloomberg等）が必要。</td>
+        </tr>
+        <tr>
+          <td>国際優良企業 ③日平均売買代金30億円以上</td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+          <td>yfinance の <code>averageVolume × price</code> で実装可能。現在 check_international_excellent() に含まれていない。</td>
+        </tr>
+        <tr>
+          <td>財務優良企業 ①プライム市場上場確認</td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+          <td>yfinance は上場市場区分を提供しない。Quick15 リストで手動担保。</td>
+        </tr>
+        <tr>
+          <td>財務優良企業 ③純資産≤1000億円→売買代金≥1億円</td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+          <td>売買代金チェックが check_financial_excellent() に含まれていない。</td>
+        </tr>
+        <tr>
+          <td>中期 日経平均PBR（年度別値）</td>
+          <td><span class="badge bg-warning text-dark">⚠ 手動設定</span></td>
+          <td>管理画面で設定した単一値を全期間で使用。年度・月次別の自動参照なし。バックテスト精度に影響あり。</td>
+        </tr>
+        <tr>
+          <td>長期 安定高配当①海外売上高30%以上</td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+          <td>フィルタ条件として長期スクリーニングに含まれていない。</td>
+        </tr>
+        <tr>
+          <td>長期 安定高配当②連続増配・安定配当確認</td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+          <td>yfinance t.history Dividends から判定ロジックの実装が必要。</td>
+        </tr>
+        <tr>
+          <td>長期 安定高配当④自己資本比率≥30%</td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+          <td>長期スクリーニング段階（_screen_one_stock の long 判定）に equity_ratio チェックなし。</td>
+        </tr>
+        <tr>
+          <td>長期 減配発表時の買い増し待機ルール</td>
+          <td><span class="badge bg-danger">❌ 未実装</span></td>
+          <td>simulate_long_term() に減配チェック・ロスカット・待機ルールなし。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 9: 財務データ取得精度 #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-warning mb-4">
+  <div class="card-header border-warning">
+    <h5 class="mb-0 text-warning"><i class="bi bi-database me-2"></i>9. 財務データ取得精度（データソース）</h5>
+  </div>
+  <div class="card-body">
+    <table class="table table-dark table-bordered table-sm">
+      <thead class="table-secondary">
+        <tr><th>項目</th><th>取得方法</th><th>精度</th><th>改善状況</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>株価・52週高安値・配当履歴</td>
+          <td><code>t.history(start=1年前, end=target+7日)</code></td>
+          <td class="text-success">高（実際の過去データ）</td>
+          <td><span class="badge bg-success">完全対応</span></td>
+        </tr>
+        <tr>
+          <td>自己資本・総資産・純利益</td>
+          <td><code>t.balance_sheet / t.financials</code><br>
+              <small class="text-muted">target_date 以前の最新決算期を選択</small></td>
+          <td class="text-success">高（当時の決算データ）</td>
+          <td><span class="badge bg-success">改善済み</span><br>
+              <small class="text-muted">旧: t.info（現在値）→ 新: 過去財務諸表</small></td>
+        </tr>
+        <tr>
+          <td>BPS・EPS・ROE・PBR・PER・自己資本比率</td>
+          <td>上記から計算<br>
+              <code>bps = equity / shares</code><br>
+              <code>roe = net_income / equity × 100</code></td>
+          <td class="text-warning">中（発行済株式数は現在値で近似）</td>
+          <td><span class="badge bg-warning text-dark">近似</span><br>
+              <small class="text-muted">大型株は株数変動小 → 誤差軽微</small></td>
+        </tr>
+        <tr>
+          <td>配当（履歴から取れなかった場合の代替）</td>
+          <td><code>t.info.dividendYield / dividendRate</code></td>
+          <td class="text-warning">低（現在の配当方針）</td>
+          <td><span class="badge bg-secondary">フォールバック</span><br>
+              <small class="text-muted">配当は t.history 優先（高精度）</small></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="alert alert-info small mt-2 mb-0">
+      <strong>キャッシュ戦略:</strong>
+      バランスシートデータは <code>balance_sheet_cache</code> テーブルに30日間保存。
+      同一銘柄の複数日付スクリーニングでは1回のAPI呼び出しのみ。
+    </div>
+  </div>
+</div>
+
+{# ───────────────────────────────────────────────────────── #}
+{# SECTION 10: ユニットテスト一覧 #}
+{# ───────────────────────────────────────────────────────── #}
+<div class="card bg-dark border border-secondary mb-4">
+  <div class="card-header border-secondary">
+    <h5 class="mb-0"><i class="bi bi-check2-all me-2 text-success"></i>10. 単体テスト一覧（51件 全合格）</h5>
+    <small class="text-muted">test_logic.py &nbsp;|&nbsp; python3 test_logic.py で実行</small>
+  </div>
+  <div class="card-body">
+    <div class="row">
+      {% set test_groups = [
+        ("TestShortTermScore（22件）", [
+          "PBR ≤0.5 → +4点", "PBR ≤0.8 → +2点", "PBR ≥1.0 → -3点", "PBR 中間 → 0点",
+          "PER ≤10 → +4点", "PER ≤15 → +2点", "PER ≥20 → -3点", "PER 中間 → 0点",
+          "ROE ≥16% → +4点", "ROE ≥8% → +2点", "ROE ≤2% → -3点", "ROE 中間 → 0点",
+          "配当 ≥4% → +4点", "配当 ≥3% → +2点", "配当 ≤1.5% → -3点", "配当 中間 → 0点",
+          "52週安値比 ≤1.2 → +2点", "52週安値比 ≥1.5 → -3点", "52週安値比 中間 → 0点",
+          "全最高値 → +18点", "全最低値 → -15点", "全None → 0点"
+        ]),
+        ("TestClassifyShortTerm（9件）", [
+          "PBR≤0.75かつ増益 → 安心割安株",
+          "配当≥2.4%かつ増益 → 安心割安株",
+          "両条件 → 安心割安株",
+          "条件未満かつ増益 → 通常割安株",
+          "スコア1 → スキップ",
+          "増益でない → スキップ",
+          "スコア-10 → 成長株",
+          "スコア-12 → 成長株",
+          "スコア-5・非増益 → スキップ"
+        ]),
+        ("TestMediumTermBuy（7件）", [
+          "国際優良・黒字 閾値=×0.6",
+          "国際優良・黒字 シグナルあり",
+          "国際優良・黒字 シグナルなし",
+          "国際優良・赤字 閾値=×0.3",
+          "財務優良・黒字 閾値=×0.5",
+          "財務優良・赤字 閾値=×0.25",
+          "PBR=None → シグナルなし"
+        ]),
+        ("TestLongTermBuyPrice（5件）", [
+          "配当120円・3〜5% → (4000, 2400)",
+          "配当80円・3.5% → 正しい計算",
+          "配当0円 → (None, None)",
+          "配当None → (None, None)",
+          "最大 > 最小"
+        ]),
+        ("TestSellTarget（4件）", [
+          "ナンピンなし → 買値×1.09",
+          "ナンピン後 → 平均×1.10",
+          "ロスカット → 買値×0.75",
+          "ロスカットは初回価格基準"
+        ]),
+        ("TestNanpinTargets（4件）", [
+          "安心割安株 全×1",
+          "通常割安株 2-3-4倍",
+          "成長株 2-3-4倍（通常と同じ）",
+          "ナンピン価格 -10/-15/-20%"
+        ])
+      ] %}
+      {% for group_name, tests in test_groups %}
+      <div class="col-md-6 mb-3">
+        <div class="card bg-secondary bg-opacity-10 border border-secondary">
+          <div class="card-header py-1 border-secondary">
+            <small class="fw-bold text-warning">{{ group_name }}</small>
+          </div>
+          <ul class="list-group list-group-flush">
+            {% for t in tests %}
+            <li class="list-group-item bg-transparent border-secondary py-1">
+              <i class="bi bi-check-circle-fill text-success me-1"></i>
+              <small>{{ t }}</small>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+pre { background: #0f172a; padding: 6px 8px; border-radius: 4px; border: 1px solid #334155; }
+.table pre { margin: 0; }
+</style>
+{% endblock scripts %}

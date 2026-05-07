@@ -1,0 +1,19 @@
+# データベース
+*.db
+*.sqlite3
+
+# 大きなデータファイル
+backtest_all_progress.json
+backtest_all_results.csv
+backtest_results_10y.csv
+backtest_results.csv
+backtest_progress.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+
+# OS
+.DS_Store
