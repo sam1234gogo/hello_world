@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物流統括シミュレーション ｜ 統括あり vs なし</title>
+<style>
+  :root{
+    --bg:#0F151B; --panel:#161E26; --panel2:#1B242D; --line:#26323C;
+    --text:#E6EDF3; --muted:#7C8B99; --faint:#4A5A68;
+    --good:#2DD4BF; --bad:#F25C6E; --amber:#F5B945; --steel:#3D5161;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px 16px 60px}
+  header h1{font-size:19px;font-weight:700;letter-spacing:.02em}
+  header p{color:var(--muted);font-size:13px;margin-top:6px;line-height:1.6}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;color:var(--good);text-transform:uppercase;margin-bottom:9px}
+
+  /* result strip */
+  .scoreboard{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;margin:20px 0;align-items:stretch}
+  .score{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .score.noctl{border-top:2px solid var(--bad)}
+  .score.ctl{border-top:2px solid var(--good)}
+  .score .lbl{font-size:11px;color:var(--muted);letter-spacing:.04em;display:flex;align-items:center;gap:7px}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .score .big{font-family:var(--mono);font-size:30px;font-weight:600;margin-top:6px;line-height:1;font-variant-numeric:tabular-nums}
+  .score .sub{font-size:11px;color:var(--muted);margin-top:7px;font-variant-numeric:tabular-nums}
+  .vs{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:78px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:8px}
+  .vs .uplift{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--good);line-height:1;font-variant-numeric:tabular-nums}
+  .vs .uplbl{font-size:10px;color:var(--muted);margin-top:5px;text-align:center;letter-spacing:.03em}
+
+  /* panels */
+  .lines{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .ptitle{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--line)}
+  .ptitle .name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .ptitle .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+  canvas.stage{display:block;width:100%;height:auto}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line)}
+  .stat{padding:10px 12px;border-right:1px solid var(--line)}
+  .stat:last-child{border-right:none}
+  .stat .k{font-size:10px;color:var(--muted);letter-spacing:.03em}
+  .stat .v{font-family:var(--mono);font-size:18px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums}
+
+  /* chart */
+  .chartwrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:12px;padding:14px}
+  .chartwrap .ch-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .chartwrap .ch-title{font-size:12.5px;font-weight:600}
+  .legend{display:flex;gap:16px;font-size:11px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  canvas#chart{display:block;width:100%;height:auto}
+
+  /* controls */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px}
+  button{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--text);background:var(--panel2);
+    border:1px solid var(--line);border-radius:9px;padding:9px 16px;cursor:pointer;transition:.15s}
+  button:hover{border-color:var(--good)}
+  button.primary{background:var(--good);color:#06231F;border-color:var(--good)}
+  button:focus-visible{outline:2px solid var(--good);outline-offset:2px}
+  .speed{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted);margin-left:auto}
+  input[type=range]{accent-color:var(--good);width:120px}
+  .clock{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .note{margin-top:22px;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--amber);border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--muted)}
+  .note b{color:var(--text);font-weight:600}
+
+  @media(max-width:720px){
+    .lines{grid-template-columns:1fr}
+    .scoreboard{grid-template-columns:1fr;gap:8px}
+    .vs{flex-direction:row;gap:12px;min-width:0}
+    .speed{margin-left:0;width:100%;justify-content:space-between}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Logistics Control — Digital Twin</div>
+    <h1>全体統括システムの効果シミュレーション</h1>
+    <p>同じ投入オーダー・同じ条件で、左右のラインを同時に走らせています。違いは「制御ロジック」だけ。中央の<b style="color:var(--bad)">工程②</b>が周期的に<b style="color:var(--bad)">停止</b>する（設備トラブル）という前提です。</p>
+  </header>
+
+  <!-- scoreboard -->
+  <div class="scoreboard">
+    <div class="score noctl">
+      <div class="lbl"><span class="dot" style="background:var(--bad)"></span>統括なし（WCS個別）</div>
+      <div class="big" id="tp0" style="color:var(--bad)">0</div>
+      <div class="sub">出来高（個） ／ 仕掛 <span id="wip0">0</span></div>
+    </div>
+    <div class="vs">
+      <div class="uplift" id="uplift">+0%</div>
+      <div class="uplbl">出来高の差</div>
+    </div>
+    <div class="score ctl">
+      <div class="lbl"><span class="dot" style="background:var(--good)"></span>統括あり（WES/WMS）</div>
+      <div class="big" id="tp1" style="color:var(--good)">0</div>
+      <div class="sub">出来高（個） ／ 仕掛 <span id="wip1">0</span></div>
+    </div>
+  </div>
+
+  <!-- factory lines -->
+  <div class="lines">
+    <div class="panel">
+      <div class="ptitle"><div class="name"><span class="dot" style="background:var(--bad)"></span>統括なし</div><div class="tag">FIXED ROUTING</div></div>
+      <canvas class="stage" id="c0"></canvas>
+      <div class="stats">
+        <div class="stat"><div class="k">出来高</div><div class="v" id="s0tp" style="color:var(--bad)">0</div></div>
+        <div class="stat"><div class="k">稼働率(健全)</div><div class="v" id="s0u">0%</div></div>
+        <div class="stat"><div class="k">仕掛(WIP)</div><div class="v" id="s0wip">0</div></div>
+        <div class="stat"><div class="k">投入待ち</div><div class="v" id="s0blk">0</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ptitle"><div class="name"><span class="dot" style="background:var(--good)"></span>統括あり</div><div class="tag">DYNAMIC ROUTING</div></div>
+      <canvas class="stage" id="c1"></canvas>
+      <div class="stats">
+        <div class="stat"><div class="k">出来高</div><div class="v" id="s1tp" style="color:var(--good)">0</div></div>
+        <div class="stat"><div class="k">稼働率(健全)</div><div class="v" id="s1u" style="color:var(--good)">0%</div></div>
+        <div class="stat"><div class="k">仕掛(WIP)</div><div class="v" id="s1wip">0</div></div>
+        <div class="stat"><div class="k">投入待ち</div><div class="v" id="s1blk">0</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WIP chart -->
+  <div class="chartwrap">
+    <div class="ch-head">
+      <div class="ch-title">仕掛在庫（WIP）の推移</div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--bad)"></span>統括なし</span>
+        <span><span class="dot" style="background:var(--good)"></span>統括あり</span>
+      </div>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <!-- controls -->
+  <div class="controls">
+    <button class="primary" id="playBtn">⏸ 一時停止</button>
+    <button id="resetBtn">↻ リセット</button>
+    <span class="clock" id="clock">経過 0 秒</span>
+    <div class="speed"><span>速度</span><input type="range" id="speed" min="1" max="6" step="1" value="3"><span id="spdlbl" style="font-family:var(--mono)">3×</span></div>
+  </div>
+
+  <div class="note">
+    <b>見るべきポイント：</b><b>工程②</b>が停止するたびに、「統括なし」は固定割付ゆえ<b>止まった工程へ物を送り続け</b>、その前にWIPが積み上がってやがて投入が詰まり、ライン全体の出来高が落ち込みます。「統括あり」は停止を即座に検知して<b>稼働中の工程だけへ動的に迂回</b>させるため、生産が止まらず出来高が伸び続けます。設備が止まっても全体は止めない——これが全体統括システム（WES/WMS）の価値です。<br><br><b>稼働率(健全)について：</b>止まっていない設備①③の稼働率です。1台止まったとき、残りの設備の空き能力で穴を埋められているかを示します。注意：止まった設備も含めた「全設備の稼働率」はこの場面では誤解を招きます（止まった設備に物を送り続けると“動いて見える”だけで出来高は増えないため）。高稼働率＝高生産ではない点が、統括システムの説得材料になります。
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  // ---- parameters ----
+  const NORMAL_PT = 1.0;                         // 処理時間（sim秒）全工程共通
+  const ARRIVAL = 0.62;                          // 投入間隔（sim秒）
+  const CAP = 14;                                // WIP上限（超えると投入ブロック）
+  const TRAVEL = 0.5;                            // 搬送時間（sim秒）
+  const WARMUP = 6, DOWN_DUR = 8, CYCLE = 14;    // 工程②: 起動6秒後、14秒周期で8秒停止
+  // 工程②が停止中かどうか（両ラインで同一タイミング＝公平）
+  function isDown(t){ return t>=WARMUP && ((t-WARMUP)%CYCLE) < DOWN_DUR; }
+  const COL = {good:"#2DD4BF", bad:"#F25C6E", amber:"#F5B945", steel:"#3D5161",
+               line:"#26323C", text:"#E6EDF3", muted:"#7C8B99", faint:"#4A5A68", panel:"#161E26"};
+
+  // ---- seeded RNG for identical arrivals on both lines ----
+  let seed = 1234567;
+  function rnd(){ seed = (seed*1103515245+12345) & 0x7fffffff; return seed/0x7fffffff; }
+
+  function makeSim(mode){
+    return {
+      mode, t:0, throughput:0, wip:0, blockedCount:0, rr:0, healthyBusy:0,
+      sourceBuf:0,
+      transit:[],   // {prog, lane, fromY, toY}
+      lanes:[0,1,2].map(i=>({queue:0, busy:false, rem:0, total:0, pt:NORMAL_PT, breakable:i===1, down:false})),
+      hist:[]
+    };
+  }
+  function route(s){
+    if(s.mode===0){ const l=s.rr%3; s.rr++; return l; }   // 固定割付：停止していても送る
+    // 統括：停止中の工程は避け、最も空いている工程へ
+    let best=-1,bl=Infinity;
+    for(let i=0;i<3;i++){ const L=s.lanes[i]; if(L.down) continue;
+      const load=(L.queue+(L.busy?1:0))*L.pt; if(load<bl){bl=load;best=i;} }
+    if(best<0){ // 全工程停止という極端ケースの保険
+      for(let i=0;i<3;i++){ const L=s.lanes[i]; const load=L.queue+(L.busy?1:0); if(load<bl){bl=load;best=i;} }
+    }
+    return best;
+  }
+  function totalWip(s){
+    let n=s.transit.length;
+    for(const L of s.lanes) n+=L.queue+(L.busy?1:0);
+    return n;
+  }
+  function step(s,dt){
+    s.t+=dt;
+    // release from source buffer if not blocked
+    while(s.sourceBuf>0 && totalWip(s)<CAP){
+      const lane=route(s);
+      s.transit.push({prog:0,lane,fromY:0,toY:lane});
+      s.sourceBuf--;
+    }
+    // transit progress
+    for(const tr of s.transit) tr.prog += dt/TRAVEL;
+    for(let i=s.transit.length-1;i>=0;i--){
+      if(s.transit[i].prog>=1){ s.lanes[s.transit[i].lane].queue++; s.transit.splice(i,1); }
+    }
+    // machines
+    for(const L of s.lanes){
+      L.down = L.breakable && isDown(s.t);
+      if(L.busy && !L.down){ L.rem-=dt; if(L.rem<=0){ L.busy=false; s.throughput++; } }
+      if(!L.busy && !L.down && L.queue>0){ L.queue--; L.busy=true; L.rem=L.pt; L.total=L.pt; }
+    }
+    s.wip=totalWip(s);
+    let hb=0; if(s.lanes[0].busy) hb++; if(s.lanes[2].busy) hb++;
+    s.healthyBusy += hb*dt;   // 止まらない①③の稼働延べ時間
+    s.blockedCount=s.sourceBuf;
+  }
+
+  // ---- world: drive both sims with identical arrivals ----
+  let s0,s1,worldT,nextArr,playing,histAccum,realLast;
+  function reset(){
+    seed=1234567; s0=makeSim(0); s1=makeSim(1);
+    worldT=0; nextArr=ARRIVAL*(0.6+rnd()*0.8); histAccum=0; realLast=null;
+  }
+  reset();
+
+  function advance(dt){
+    worldT+=dt;
+    // arrivals (same stream to both)
+    nextArr-=dt;
+    while(nextArr<=0){ s0.sourceBuf++; s1.sourceBuf++; nextArr+=ARRIVAL*(0.6+rnd()*0.8); }
+    step(s0,dt); step(s1,dt);
+    // history sampling
+    histAccum+=dt;
+    if(histAccum>=0.4){ histAccum=0; s0.hist.push(s0.wip); s1.hist.push(s1.wip);
+      if(s0.hist.length>260){s0.hist.shift();s1.hist.shift();} }
+  }
+
+  // ---- rendering ----
+  const c0=document.getElementById("c0"), c1=document.getElementById("c1"), chart=document.getElementById("chart");
+  const ctx0=c0.getContext("2d"), ctx1=c1.getContext("2d"), ctxC=chart.getContext("2d");
+  let dpr=Math.min(window.devicePixelRatio||1,2);
+
+  function fit(canvas,h){
+    const w=canvas.clientWidth;
+    canvas.width=w*dpr; canvas.height=h*dpr;
+    canvas.style.height=h+"px";
+    const ctx=canvas.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
+    return {w,h,ctx};
+  }
+  function sizeAll(){
+    dpr=Math.min(window.devicePixelRatio||1,2);
+    const sh = Math.max(190, Math.min(250, c0.clientWidth*0.62));
+    fit(c0,sh); fit(c1,sh);
+    fit(chart, Math.max(130, Math.min(190, chart.clientWidth*0.34)));
+  }
+
+  function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+  function drawSim(ctx,W,H,s){
+    ctx.clearRect(0,0,W,H);
+    const padT=18, padB=14;
+    const laneY=[0,1,2].map(i=> padT + (H-padT-padB)*(i+0.5)/3 );
+    const srcX=30, srcY=H/2;
+    const machX=W-92, machW=46, machH=30;
+    const sinkX=W-30;
+
+    // connection lines source -> machines
+    ctx.lineWidth=1.5;
+    for(let i=0;i<3;i++){
+      ctx.strokeStyle="#1f2a33";
+      ctx.beginPath(); ctx.moveTo(srcX+14,srcY); ctx.lineTo(machX-2,laneY[i]); ctx.stroke();
+      // machine -> sink
+      ctx.beginPath(); ctx.moveTo(machX+machW,laneY[i]); ctx.lineTo(sinkX-8,srcY); ctx.stroke();
+    }
+
+    // queues (WIP towers) + machines
+    for(let i=0;i<3;i++){
+      const L=s.lanes[i], y=laneY[i];
+      const isBn = i===1;
+      const down = L.down;
+      // queue blocks stacked left of machine
+      const bw=11,bh=14,gap=3, shown=Math.min(L.queue,14);
+      let qcol = L.queue<=3?COL.steel : L.queue<=7?COL.amber : COL.bad;
+      for(let q=0;q<shown;q++){
+        const bx=machX-10-(q+1)*(bw+gap);
+        ctx.fillStyle=qcol; roundRect(ctx,bx,y-bh/2,bw,bh,2); ctx.fill();
+      }
+      if(L.queue>14){ ctx.fillStyle=COL.bad; ctx.font="600 11px "+getComputedStyle(document.body).fontFamily;
+        ctx.textAlign="right"; ctx.fillText("+"+(L.queue-14), machX-10-14*(bw+gap)-4, y+4); }
+
+      // machine box
+      ctx.fillStyle = down ? "#2a1014" : "#1d2730";
+      ctx.strokeStyle = down ? COL.bad : (isBn ? "#3a4a55" : "#33424e");
+      ctx.lineWidth = down ? 2 : 1.5; roundRect(ctx,machX,y-machH/2,machW,machH,5); ctx.fill(); ctx.stroke();
+      // progress fill (停止中は描かない)
+      if(L.busy && !down){
+        const p=1-L.rem/L.total;
+        ctx.fillStyle="rgba(45,212,191,.5)";
+        roundRect(ctx,machX,y-machH/2,machW*p,machH,5); ctx.fill();
+      }
+      // lane label
+      ctx.fillStyle= down?COL.bad:COL.muted; ctx.font="600 10px "+getComputedStyle(document.body).fontFamily;
+      ctx.textAlign="center"; ctx.fillText("工程"+(["①","②","③"][i]), machX+machW/2, y-machH/2-5);
+      if(down){ ctx.fillStyle=COL.bad; ctx.font="700 9px ui-monospace,Menlo,Consolas,monospace";
+        ctx.fillText("■停止", machX+machW/2, y+machH/2+11); }
+    }
+
+    // transit dots
+    for(const tr of s.transit){
+      const y= padT + (H-padT-padB)*(tr.lane+0.5)/3;
+      const x= srcX+14 + (machX-12-(srcX+14))*Math.min(tr.prog,1);
+      const yy= srcY + (y-srcY)*Math.min(tr.prog,1);
+      ctx.fillStyle=COL.good; ctx.beginPath(); ctx.arc(x,yy,3.2,0,7); ctx.fill();
+    }
+
+    // source node
+    const blocked = s.sourceBuf>2;
+    ctx.fillStyle = blocked? "#2a1d22" : "#1d2730";
+    ctx.strokeStyle = blocked? COL.bad : "#33424e"; ctx.lineWidth=1.5;
+    roundRect(ctx,srcX-14,srcY-20,28,40,6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=COL.muted; ctx.font="600 9px "+getComputedStyle(document.body).fontFamily;
+    ctx.textAlign="center"; ctx.fillText("投入", srcX, srcY-26);
+    if(s.sourceBuf>0){ ctx.fillStyle=blocked?COL.bad:COL.amber; ctx.font="700 11px ui-monospace,Menlo,Consolas,monospace";
+      ctx.fillText(s.sourceBuf, srcX, srcY+4); }
+
+    // sink node
+    ctx.fillStyle="#16241f"; ctx.strokeStyle=COL.good; ctx.lineWidth=1.5;
+    roundRect(ctx,sinkX-14,srcY-20,28,40,6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=COL.muted; ctx.font="600 9px "+getComputedStyle(document.body).fontFamily;
+    ctx.fillText("出荷", sinkX, srcY-26);
+    ctx.fillStyle=COL.good; ctx.font="700 13px ui-monospace,Menlo,Consolas,monospace";
+    ctx.fillText(s.throughput, sinkX, srcY+5);
+  }
+
+  function drawChart(W,H){
+    ctxC.clearRect(0,0,W,H);
+    const padL=30,padR=10,padT=10,padB=18;
+    const plotW=W-padL-padR, plotH=H-padT-padB;
+    const maxY=Math.max(CAP+2, ...s0.hist, ...s1.hist, 8);
+    // grid
+    ctxC.strokeStyle=COL.line; ctxC.lineWidth=1; ctxC.fillStyle=COL.faint;
+    ctxC.font="9px ui-monospace,Menlo,Consolas,monospace"; ctxC.textAlign="right";
+    for(let g=0;g<=4;g++){
+      const v=maxY*g/4, y=padT+plotH-(v/maxY)*plotH;
+      ctxC.beginPath(); ctxC.moveTo(padL,y); ctxC.lineTo(W-padR,y); ctxC.stroke();
+      ctxC.fillText(Math.round(v), padL-6, y+3);
+    }
+    // CAP line
+    const capY=padT+plotH-(CAP/maxY)*plotH;
+    ctxC.strokeStyle="rgba(245,185,69,.5)"; ctxC.setLineDash([4,4]);
+    ctxC.beginPath(); ctxC.moveTo(padL,capY); ctxC.lineTo(W-padR,capY); ctxC.stroke(); ctxC.setLineDash([]);
+    ctxC.fillStyle=COL.amber; ctxC.textAlign="left"; ctxC.fillText("投入詰まり", padL+4, capY-4);
+
+    function line(hist,color){
+      if(hist.length<2)return;
+      ctxC.strokeStyle=color; ctxC.lineWidth=2; ctxC.beginPath();
+      const n=hist.length;
+      for(let i=0;i<n;i++){
+        const x=padL+(i/(Math.max(n-1,1)))*plotW;
+        const y=padT+plotH-(Math.min(hist[i],maxY)/maxY)*plotH;
+        i?ctxC.lineTo(x,y):ctxC.moveTo(x,y);
+      }
+      ctxC.stroke();
+    }
+    line(s0.hist,COL.bad);
+    line(s1.hist,COL.good);
+  }
+
+  // ---- DOM update ----
+  const el=id=>document.getElementById(id);
+  function updateDOM(){
+    el("tp0").textContent=s0.throughput; el("tp1").textContent=s1.throughput;
+    el("wip0").textContent=s0.wip; el("wip1").textContent=s1.wip;
+    el("s0tp").textContent=s0.throughput; el("s1tp").textContent=s1.throughput;
+    el("s0wip").textContent=s0.wip; el("s1wip").textContent=s1.wip;
+    const u0=s0.t>0?Math.round(s0.healthyBusy/(2*s0.t)*100):0, u1=s1.t>0?Math.round(s1.healthyBusy/(2*s1.t)*100):0;
+    el("s0u").textContent=u0+"%"; el("s1u").textContent=u1+"%";
+    el("s0blk").textContent=s0.blockedCount; el("s1blk").textContent=s1.blockedCount;
+    const up = s0.throughput>0 ? Math.round((s1.throughput-s0.throughput)/s0.throughput*100) : 0;
+    el("uplift").textContent=(up>=0?"+":"")+up+"%";
+    el("clock").textContent="経過 "+Math.floor(worldT)+" 秒";
+  }
+
+  // ---- loop ----
+  let speed=3;
+  function frame(now){
+    if(realLast===null) realLast=now;
+    let rdt=(now-realLast)/1000; realLast=now;
+    rdt=Math.min(rdt,0.05);
+    if(playing){
+      let sdt=rdt*speed;
+      // sub-step for stability
+      const steps=Math.ceil(sdt/0.05);
+      for(let i=0;i<steps;i++) advance(sdt/steps);
+    }
+    const W0=c0.clientWidth,H0=c0.clientHeight;
+    drawSim(ctx0,W0,H0,s0);
+    drawSim(ctx1,c1.clientWidth,c1.clientHeight,s1);
+    drawChart(chart.clientWidth,chart.clientHeight);
+    updateDOM();
+    requestAnimationFrame(frame);
+  }
+
+  // ---- controls ----
+  playing=true;
+  el("playBtn").onclick=function(){ playing=!playing; this.textContent=playing?"⏸ 一時停止":"▶ 再生"; this.classList.toggle("primary",!playing); };
+  el("resetBtn").onclick=function(){ reset(); };
+  el("speed").oninput=function(){ speed=+this.value; el("spdlbl").textContent=this.value+"×"; };
+
+  window.addEventListener("resize",sizeAll);
+  // reduced motion: still draw, just don't auto-run fast
+  if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){ speed=2; el("speed").value=2; el("spdlbl").textContent="2×"; }
+
+  sizeAll();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
